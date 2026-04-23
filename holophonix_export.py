@@ -4,9 +4,12 @@
 #   Inputs :
 #     filepath     (str,  Item Access) — chemin du CSV de sortie
 #     run          (bool, Item Access) — bouton, déclenche l'écriture
-#     axis_mode    (int,  Item Access) — 0 = Direct, 1 = Rhino → Holophonix
+#     axis_mode    (int,  Item Access) — 0 = Direct, 1 = Rhino → Holophonix (Y, -X, Z)
 #     layer_root   (str,  Item Access) — préfixe de calque, défaut "SPEAKERS"
 #     auto_orient  (bool, Item Access) — rempli "true"/"false" dans la colonne Auto Orientation
+#     flip_x       (bool, Item Access) — inverse le signe de X après mapping d'axes
+#     flip_y       (bool, Item Access) — inverse le signe de Y après mapping d'axes
+#     flip_z       (bool, Item Access) — inverse le signe de Z après mapping d'axes
 #   Outputs :
 #     lines        — liste des lignes CSV (header inclus), pour preview
 #     count        — nombre d'enceintes exportées
@@ -31,11 +34,14 @@ DEFAULT_TILT = "0"
 DEFAULT_LOCK = "false"
 
 
-def to_holophonix(xyz, mode):
+def to_holophonix(xyz, mode, signs=(1, 1, 1)):
     x, y, z = xyz
     if mode == 1:
-        return y, -x, z
-    return x, y, z
+        xh, yh, zh = y, -x, z
+    else:
+        xh, yh, zh = x, y, z
+    sx, sy, sz = signs
+    return xh * sx, yh * sy, zh * sz
 
 
 def polar(xh, yh, zh):
@@ -97,8 +103,8 @@ def assign_indices(speakers):
     return groups
 
 
-def format_line(s, mode, auto_orient_str):
-    xh, yh, zh = to_holophonix(s["xyz"], mode)
+def format_line(s, mode, signs, auto_orient_str):
+    xh, yh, zh = to_holophonix(s["xyz"], mode, signs)
     az, el, d = polar(xh, yh, zh)
     osc = "/speaker/{}".format(s["global_index"])
     name = "{}_{}".format(s["leaf"], s["nn"])
@@ -114,11 +120,16 @@ doc = Rhino.RhinoDoc.ActiveDoc
 root = layer_root if layer_root else "SPEAKERS"
 mode = int(axis_mode) if axis_mode is not None else 0
 auto_orient_str = "true" if auto_orient else "false"
+signs = (
+    -1 if flip_x else 1,
+    -1 if flip_y else 1,
+    -1 if flip_z else 1,
+)
 
 speakers = collect_speakers(doc, root)
 groups = assign_indices(speakers)
 
-rows = [format_line(s, mode, auto_orient_str) for s in speakers]
+rows = [format_line(s, mode, signs, auto_orient_str) for s in speakers]
 lines = [HEADER] + rows
 count = len(rows)
 log = ["{}: {}".format(leaf, len(grp)) for leaf, grp in groups.items()]

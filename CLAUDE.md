@@ -37,8 +37,13 @@ Enceintes placées comme **Block Instances** sur des sous-calques de `SPEAKERS::
 | `axis_mode`  | int  | `0`         |
 | `layer_root` | str  | `SPEAKERS`  |
 | `auto_orient`| bool | `False`     |
+| `flip_x`     | bool | `False`     |
+| `flip_y`     | bool | `False`     |
+| `flip_z`     | bool | `False`     |
 
 Outputs : `lines`, `count`, `log`.
+
+Les `flip_*` s'appliquent **après** le mapping `axis_mode` — ils inversent simplement le signe sur l'axe concerné pour gérer les conventions miroir.
 
 ## Modifs typiques
 
