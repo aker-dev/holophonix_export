@@ -1,25 +1,31 @@
-# Holophonix Overview export — GhPython (Rhino 8, Python 3)
+# Holophonix Overview export — GhPython (Rhino 8.3+, Python 3)
 #
 # Composant GhPython à configurer ainsi :
 #   Inputs :
-#     filepath     (str,  Item Access) — chemin du CSV de sortie
+#     folder       (str,  Item Access) — dossier de sortie (CSV + .glb)
 #     run          (bool, Item Access) — bouton, déclenche l'écriture
-#     layer_root   (str,  Item Access) — préfixe de calque, défaut "SPEAKERS"
+#     layer_root   (str,  Item Access) — préfixe de calque speakers, défaut "SPEAKERS"
 #     auto_orient  (bool, Item Access) — rempli "true"/"false" dans la colonne Auto Orientation
 #   Outputs :
 #     lines        — liste des lignes CSV (header inclus), pour preview
 #     count        — nombre d'enceintes exportées
-#     log          — diagnostic (un item par groupe de modèle)
+#     log          — diagnostic (groupes + chemins écrits)
 #
 # Comportement : scanne tous les Block Instances dont le calque complet
 # commence par "<layer_root>::", convertit le point d'insertion en mètres
 # quelle que soit l'unité du document Rhino, groupe par nom de calque
 # feuille, numérote NN zero-padded par groupe, convertit en polaire
-# (formules alignées sur le plugin Ruby officiel Holophonix), écrit le
-# CSV si `run` est True.
+# (formules alignées sur le plugin Ruby officiel Holophonix), puis si
+# `run` est True écrit dans `folder` :
+#   - holophonix_overview.csv    (positions + couleurs)
+#   - venue.glb                  (géométrie du calque VENUE::*)
+#   - <MODEL>.glb                (définition du bloc, pivot = point d'insertion ;
+#                                 un fichier par sous-calque SPEAKERS::<MODEL>)
 #
-# Mapping d'axes figé : (X_h, Y_h, Z_h) = (Y_r, X_r, Z_r) — validé sur
-# la scène de référence. Pour une autre convention, éditer to_holophonix.
+# Mapping d'axes figé pour le CSV : (X_h, Y_h, Z_h) = (Y_r, X_r, Z_r).
+# Les GLB sont écrits via Rhino.FileIO.FileGltf.Write (API RhinoCommon,
+# pas de dialogue graphique) dans un doc headless temporaire. Requiert
+# Rhino >= 8.3.
 
 import Rhino
 import math
@@ -31,6 +37,12 @@ HEADER = "OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;
 DEFAULT_PAN = "0"
 DEFAULT_TILT = "0"
 DEFAULT_LOCK = "false"
+
+VENUE_ROOT = "VENUE"
+CSV_NAME = "holophonix_overview.csv"
+VENUE_GLB_NAME = "venue.glb"
+# Les speakers sont exportés en un .glb par modèle, nommé "<leaf>.glb"
+# (ex: MDC5.glb, HOPS8.glb, G18-SUB.glb).
 
 
 def to_holophonix(xyz):
@@ -55,6 +67,82 @@ def rgba_color(c):
         iv = int(v)
         return str(iv) if v == iv else repr(v)
     return ",".join(fmt(x / 255.0) for x in (c.R, c.G, c.B, c.A))
+
+
+def collect_objects_on_layer(doc, root):
+    """Object IDs dont le layer FullPath == root OU commence par root::."""
+    ids = []
+    for obj in doc.Objects:
+        layer = doc.Layers[obj.Attributes.LayerIndex]
+        fp = layer.FullPath
+        if fp == root or fp.startswith(root + "::"):
+            ids.append(obj.Id)
+    return ids
+
+
+def collect_block_defs_by_leaf(doc, root):
+    """Dict {leaf: InstanceDefinition} — une définition unique par sous-calque de `root::`.
+    Toutes les instances d'un même modèle doivent pointer vers la même définition ;
+    on prend celle de la première instance rencontrée."""
+    root_prefix = root + "::"
+    defs = {}
+    for obj in doc.Objects:
+        if obj.ObjectType != Rhino.DocObjects.ObjectType.InstanceReference:
+            continue
+        layer = doc.Layers[obj.Attributes.LayerIndex]
+        fp = layer.FullPath
+        if not fp.startswith(root_prefix):
+            continue
+        leaf = fp.split("::")[-1]
+        if leaf not in defs:
+            defs[leaf] = obj.InstanceDefinition
+    return defs
+
+
+def _gltf_options():
+    """Options par défaut pour l'export glTF. Cohérentes avec le CSV (Z up),
+    compatibles avec le rendu Holophonix (matériaux + couleur de calque)."""
+    opts = Rhino.FileIO.FileGltfWriteOptions()
+    opts.MapZToY = False                          # Z reste la hauteur (cf. CSV)
+    opts.ExportMaterials = True
+    opts.UseDisplayColorForUnsetMaterials = True  # couleur du calque = couleur du GLB
+    opts.CullBackfaces = True
+    opts.ExportLayers = False                     # GLB = asset neutre
+    return opts
+
+
+def export_glb(source_doc, object_ids, output_path):
+    """Exporte les objets passés en .glb binary via l'API RhinoCommon (sans dialogue).
+    Pattern : doc headless temporaire → duplication des géométries → FileGltf.Write → dispose.
+    Requiert Rhino >= 8.3."""
+    if not object_ids:
+        return False
+    tmp = Rhino.RhinoDoc.CreateHeadless(None)
+    try:
+        for oid in object_ids:
+            obj = source_doc.Objects.FindId(oid)
+            if obj is not None:
+                tmp.Objects.Add(obj.Geometry, obj.Attributes)
+        return Rhino.FileIO.FileGltf.Write(output_path, tmp, _gltf_options())
+    finally:
+        tmp.Dispose()
+
+
+def export_block_def_as_glb(source_doc, block_def, output_path):
+    """Exporte la géométrie de la définition du bloc en .glb binary.
+    Pivot = origine du bloc dans Rhino (point d'insertion). On flatten la
+    définition via GetObjects() dans un doc headless, puis FileGltf.Write.
+
+    Limitation : les InstanceReferences imbriquées dans la définition ne sont
+    pas résolues (leur définition n'est pas répliquée dans le tmp doc).
+    Typiquement sans impact pour les blocs d'enceintes "plats"."""
+    tmp = Rhino.RhinoDoc.CreateHeadless(None)
+    try:
+        for rh_obj in block_def.GetObjects():
+            tmp.Objects.Add(rh_obj.Geometry, rh_obj.Attributes)
+        return Rhino.FileIO.FileGltf.Write(output_path, tmp, _gltf_options())
+    finally:
+        tmp.Dispose()
 
 
 def collect_speakers(doc, root):
@@ -120,7 +208,7 @@ def _opt(name, default):
 doc = Rhino.RhinoDoc.ActiveDoc
 root = _opt("layer_root", "SPEAKERS") or "SPEAKERS"
 auto_orient_str = "true" if _opt("auto_orient", False) else "false"
-filepath_val = _opt("filepath", None)
+folder_val = _opt("folder", None)
 run_val = _opt("run", False)
 
 speakers = collect_speakers(doc, root)
@@ -131,8 +219,36 @@ lines = [HEADER] + rows
 count = len(rows)
 log = ["{}: {}".format(leaf, len(grp)) for leaf, grp in groups.items()]
 
-if run_val and filepath_val:
-    out = os.path.expanduser(filepath_val)
-    with open(out, "w", encoding="utf-8", newline="") as f:
+if run_val and folder_val:
+    folder = os.path.expanduser(folder_val)
+    os.makedirs(folder, exist_ok=True)
+
+    # CSV
+    csv_path = os.path.join(folder, CSV_NAME)
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
         f.write("\n".join(lines))
-    log.append("WROTE: {}".format(out))
+    log.append("WROTE: {}".format(csv_path))
+
+    # VENUE .glb
+    venue_ids = collect_objects_on_layer(doc, VENUE_ROOT)
+    if venue_ids:
+        venue_path = os.path.join(folder, VENUE_GLB_NAME)
+        if export_glb(doc, venue_ids, venue_path):
+            log.append("WROTE: {}".format(venue_path))
+        else:
+            log.append("FAILED venue.glb (FileGltf.Write returned False)")
+    else:
+        log.append("SKIP venue.glb: no geometry on '{}'".format(VENUE_ROOT))
+
+    # SPEAKERS .glb : un fichier par modèle, contenant la définition du bloc
+    # (géométrie brute, pivot = point d'insertion du bloc).
+    defs_by_leaf = collect_block_defs_by_leaf(doc, root)
+    if defs_by_leaf:
+        for leaf in sorted(defs_by_leaf):
+            spk_path = os.path.join(folder, "{}.glb".format(leaf))
+            if export_block_def_as_glb(doc, defs_by_leaf[leaf], spk_path):
+                log.append("WROTE: {}".format(spk_path))
+            else:
+                log.append("FAILED {}.glb (FileGltf.Write returned False)".format(leaf))
+    else:
+        log.append("SKIP speakers: no blocks on '{}'".format(root))
