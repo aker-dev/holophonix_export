@@ -4,12 +4,8 @@
 #   Inputs :
 #     filepath     (str,  Item Access) — chemin du CSV de sortie
 #     run          (bool, Item Access) — bouton, déclenche l'écriture
-#     axis_mode    (int,  Item Access) — 0 = Direct, 1 = Rhino → Holophonix (Y, -X, Z)
 #     layer_root   (str,  Item Access) — préfixe de calque, défaut "SPEAKERS"
 #     auto_orient  (bool, Item Access) — rempli "true"/"false" dans la colonne Auto Orientation
-#     flip_x       (bool, Item Access) — inverse le signe de X après mapping d'axes
-#     flip_y       (bool, Item Access) — inverse le signe de Y après mapping d'axes
-#     flip_z       (bool, Item Access) — inverse le signe de Z après mapping d'axes
 #   Outputs :
 #     lines        — liste des lignes CSV (header inclus), pour preview
 #     count        — nombre d'enceintes exportées
@@ -21,6 +17,9 @@
 # feuille, numérote NN zero-padded par groupe, convertit en polaire
 # (formules alignées sur le plugin Ruby officiel Holophonix), écrit le
 # CSV si `run` est True.
+#
+# Mapping d'axes figé : (X_h, Y_h, Z_h) = (Y_r, X_r, Z_r) — validé sur
+# la scène de référence. Pour une autre convention, éditer to_holophonix.
 
 import Rhino
 import math
@@ -34,14 +33,10 @@ DEFAULT_TILT = "0"
 DEFAULT_LOCK = "false"
 
 
-def to_holophonix(xyz, mode, signs=(1, 1, 1)):
+def to_holophonix(xyz):
+    # Mapping figé Rhino → Holophonix : permutation X ↔ Y, Z inchangé.
     x, y, z = xyz
-    if mode == 1:
-        xh, yh, zh = y, -x, z
-    else:
-        xh, yh, zh = x, y, z
-    sx, sy, sz = signs
-    return xh * sx, yh * sy, zh * sz
+    return y, x, z
 
 
 def polar(xh, yh, zh):
@@ -103,8 +98,8 @@ def assign_indices(speakers):
     return groups
 
 
-def format_line(s, mode, signs, auto_orient_str):
-    xh, yh, zh = to_holophonix(s["xyz"], mode, signs)
+def format_line(s, auto_orient_str):
+    xh, yh, zh = to_holophonix(s["xyz"])
     az, el, d = polar(xh, yh, zh)
     osc = "/speaker/{}".format(s["global_index"])
     name = "{}_{}".format(s["leaf"], s["nn"])
@@ -116,26 +111,28 @@ def format_line(s, mode, signs, auto_orient_str):
     ])
 
 
+def _opt(name, default):
+    # Tolère l'input non déclaré sur le composant ET l'input déclaré mais non branché (None).
+    v = globals().get(name, default)
+    return default if v is None else v
+
+
 doc = Rhino.RhinoDoc.ActiveDoc
-root = layer_root if layer_root else "SPEAKERS"
-mode = int(axis_mode) if axis_mode is not None else 0
-auto_orient_str = "true" if auto_orient else "false"
-signs = (
-    -1 if flip_x else 1,
-    -1 if flip_y else 1,
-    -1 if flip_z else 1,
-)
+root = _opt("layer_root", "SPEAKERS") or "SPEAKERS"
+auto_orient_str = "true" if _opt("auto_orient", False) else "false"
+filepath_val = _opt("filepath", None)
+run_val = _opt("run", False)
 
 speakers = collect_speakers(doc, root)
 groups = assign_indices(speakers)
 
-rows = [format_line(s, mode, signs, auto_orient_str) for s in speakers]
+rows = [format_line(s, auto_orient_str) for s in speakers]
 lines = [HEADER] + rows
 count = len(rows)
 log = ["{}: {}".format(leaf, len(grp)) for leaf, grp in groups.items()]
 
-if run and filepath:
-    out = os.path.expanduser(filepath)
+if run_val and filepath_val:
+    out = os.path.expanduser(filepath_val)
     with open(out, "w", encoding="utf-8", newline="") as f:
         f.write("\n".join(lines))
     log.append("WROTE: {}".format(out))

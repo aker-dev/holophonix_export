@@ -18,12 +18,8 @@ Export d'une scène Rhino 8 vers un CSV au format **Holophonix Overview**, via u
    |---------------|------|------------------------------------------------------------------|
    | `filepath`    | str  | Panel avec le chemin du CSV de sortie                            |
    | `run`         | bool | **Button** (one-shot, pour ne pas écraser à chaque tick)         |
-   | `axis_mode`   | int  | Value List `0` (Direct) / `1` (Rhino→Holophonix)                 |
    | `layer_root`  | str  | Panel, défaut `SPEAKERS`                                         |
    | `auto_orient` | bool | Toggle, défaut `False`                                           |
-   | `flip_x`      | bool | Toggle, défaut `False` — inverse le signe de X après mapping     |
-   | `flip_y`      | bool | Toggle, défaut `False` — inverse le signe de Y après mapping     |
-   | `flip_z`      | bool | Toggle, défaut `False` — inverse le signe de Z après mapping     |
 
 5. Ajouter les outputs `lines`, `count`, `log`.
 
@@ -51,12 +47,7 @@ OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock
 
 ## Conventions d'axes
 
-- `axis_mode = 0` (Direct) : `(X, Y, Z)_holo = (X, Y, Z)_rhino`.
-- `axis_mode = 1` (Rhino→Holophonix) : `(X, Y, Z)_holo = (Y, -X, Z)_rhino` — hypothèse standard audio (devant / gauche / haut).
-
-Les toggles `flip_x` / `flip_y` / `flip_z` s'appliquent **après** le mapping, et inversent simplement le signe sur l'axe concerné. Utile pour corriger un miroir résiduel après avoir choisi `axis_mode`.
-
-À choisir empiriquement en comparant la top view Rhino ↔ Holophonix après import.
+Mapping figé : `(X_h, Y_h, Z_h) = (Y_r, X_r, Z_r)` — permutation X ↔ Y, Z inchangé. Validé sur la scène de référence. Pour une autre convention, éditer la fonction `to_holophonix()` dans [`holophonix_export.py`](holophonix_export.py).
 
 ## Limitations
 

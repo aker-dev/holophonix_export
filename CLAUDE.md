@@ -34,21 +34,17 @@ Enceintes placées comme **Block Instances** sur des sous-calques de `SPEAKERS::
 |--------------|------|-------------|
 | `filepath`   | str  | —           |
 | `run`        | bool | —           |
-| `axis_mode`  | int  | `0`         |
 | `layer_root` | str  | `SPEAKERS`  |
 | `auto_orient`| bool | `False`     |
-| `flip_x`     | bool | `False`     |
-| `flip_y`     | bool | `False`     |
-| `flip_z`     | bool | `False`     |
 
 Outputs : `lines`, `count`, `log`.
 
-Les `flip_*` s'appliquent **après** le mapping `axis_mode` — ils inversent simplement le signe sur l'axe concerné pour gérer les conventions miroir.
+**Mapping d'axes figé** : `(X_h, Y_h, Z_h) = (Y_r, X_r, Z_r)` — permutation X ↔ Y, Z inchangé. Validé sur la scène de référence. Si un jour une scène demande un autre mapping, éditer directement la fonction `to_holophonix()`.
 
 ## Modifs typiques
 
 - Format couleur → `rgba_color()` seulement.
-- Convention axes → `to_holophonix()` (toggle `axis_mode` : 0 Direct, 1 Rhino→Holophonix `(Y, -X, Z)`).
+- Convention axes → éditer `to_holophonix()` directement (mapping figé, pas de runtime).
 - Unités → déjà géré auto.
 
 ## Ne PAS faire
