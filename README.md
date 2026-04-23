@@ -1,43 +1,45 @@
 # holophonix_export
 
-Export d'une scène Rhino 8 vers un **package Holophonix** (CSV Overview + `venue.glb` + un `.glb` par modèle d'enceinte), via un composant Grasshopper GhPython3.
+Export a Rhino 8 scene to a **Holophonix package** (Overview CSV + `venue.glb` + one `.glb` per speaker model), from a Grasshopper GhPython3 component.
 
-## Pré-requis
+> Project language is English. All code, comments, docs, and commit messages are in English.
 
-- **Rhino ≥ 8.3** (CPython 3 embarqué côté Grasshopper + API `Rhino.FileIO.FileGltf` utilisée pour l'export programmatique des .glb).
-- Scène Rhino avec :
-  - **Enceintes** — Block Instances sur des sous-calques de `SPEAKERS::*` (un sous-calque par modèle : `SPEAKERS::MDC5`, `SPEAKERS::HOPS8`, …). La couleur du calque sert de couleur d'enceinte dans le CSV.
-  - **Salle** — géométrie quelconque sur le calque `VENUE` (ou `VENUE::*`). Exportée telle quelle en .glb.
+## Prerequisites
+
+- **Rhino >= 8.3** (embedded CPython 3 on the Grasshopper side + `Rhino.FileIO.FileGltf` API used for programmatic .glb export).
+- A Rhino scene with:
+  - **Speakers** — Block Instances on sub-layers of `SPEAKERS::*` (one sub-layer per model: `SPEAKERS::MDC5`, `SPEAKERS::HOPS8`, ...). The layer color is used as the speaker color in the CSV.
+  - **Venue** — any geometry on the `VENUE` layer (or `VENUE::*`). Exported as-is to .glb.
 
 ## Installation
 
-1. Ouvrir Grasshopper dans Rhino 8.
-2. Poser un composant **GhPython3** (*Script → Python 3*).
-3. Coller le contenu de [`holophonix_export.py`](holophonix_export.py) dans l'éditeur du composant.
-4. Ajouter les inputs (clic droit sur le composant, `+`) :
+1. Open Grasshopper inside Rhino 8.
+2. Drop a **GhPython3** component (*Script → Python 3*).
+3. Paste the contents of [`holophonix_export.py`](holophonix_export.py) into the component editor.
+4. Add the inputs (right-click on the component, `+`):
 
-   | Nom               | Type | Détail                                                           |
+   | Name              | Type | Details                                                          |
    |-------------------|------|------------------------------------------------------------------|
-   | `folder`          | str  | Panel avec le **dossier** de sortie (créé s'il manque)           |
-   | `run`             | bool | **Button** (one-shot, pour ne pas écraser à chaque tick)         |
-   | `layer_root`      | str  | Panel, défaut `SPEAKERS`                                         |
-   | `auto_orient`     | bool | Toggle, défaut `False`                                           |
-   | `export_venue`    | bool | Toggle, défaut `True` — écrit `venue.glb` si activé              |
-   | `export_speakers` | bool | Toggle, défaut `True` — écrit un `<MODEL>.glb` par modèle        |
+   | `folder`          | str  | Panel with the output **folder** path (created if missing)       |
+   | `run`             | bool | **Button** (one-shot, so nothing is overwritten on every tick)   |
+   | `layer_root`      | str  | Panel, defaults to `SPEAKERS`                                    |
+   | `auto_orient`     | bool | Toggle, defaults to `False`                                      |
+   | `export_venue`    | bool | Toggle, defaults to `True` — writes `venue.glb` when enabled     |
+   | `export_speakers` | bool | Toggle, defaults to `True` — writes one `<MODEL>.glb` per model  |
 
-5. Ajouter les outputs `lines`, `count`, `log`.
+5. Add the outputs `lines`, `count`, `log`.
 
-## Utilisation
+## Usage
 
-1. Brancher un Panel sur `lines` pour previewer les lignes CSV.
-2. Vérifier `count` (nombre d'enceintes détectées) et `log` (répartition par modèle + chemins écrits).
-3. Cliquer **`run`** → fichiers produits dans `folder` :
+1. Wire a Panel to `lines` to preview the CSV rows.
+2. Check `count` (number of detected speakers) and `log` (per-model breakdown + written paths).
+3. Click **`run`** → files produced in `folder`:
    - `holophonix_overview.csv`
-   - `venue.glb` — géométrie de la salle
-   - `<MODEL>.glb` pour chaque sous-calque `SPEAKERS::<MODEL>` (ex: `MDC5.glb`, `HOPS8.glb`, `G18-SUB.glb`, …) — **un asset par modèle**, contenant seulement la définition du bloc avec son point d'insertion comme pivot. Pas les instances placées dans la scène.
-4. Dans Holophonix : importer le CSV via la fenêtre **Overview**, charger `venue.glb` comme décor, et chaque `<MODEL>.glb` comme asset instancié aux positions des enceintes du CSV correspondant.
+   - `venue.glb` — venue geometry
+   - `<MODEL>.glb` for each `SPEAKERS::<MODEL>` sub-layer (e.g. `MDC5.glb`, `HOPS8.glb`, `G18-SUB.glb`, ...) — **one asset per model**, containing only the block definition with its insertion point as pivot. Not the instances placed in the scene.
+4. In Holophonix: import the CSV through the **Overview** window, load `venue.glb` as the stage decor, and each `<MODEL>.glb` as an asset instantiated at the positions of the matching speakers in the CSV.
 
-## Format de sortie
+## Output format
 
 ```
 OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock
@@ -45,25 +47,25 @@ OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock
 ...
 ```
 
-- **OSC** : index global (`/speaker/1`, `/speaker/2`, …) dans l'ordre du tri.
-- **Name** : `<modèle>_NN` zero-padded par groupe.
-- **Color** : `R,G,B,A` flottants 0–1.
-- **X/Y/Z** : mètres — conversion automatique depuis l'unité du document Rhino.
-- Toutes les valeurs numériques à **3 décimales**.
+- **OSC**: global index (`/speaker/1`, `/speaker/2`, ...) in sort order.
+- **Name**: `<model>_NN` zero-padded per group.
+- **Color**: `R,G,B,A` as 0–1 floats.
+- **X/Y/Z**: meters — automatic conversion from the Rhino document unit.
+- All numeric values at **3 decimals**.
 
-## Conventions d'axes
+## Axis conventions
 
-Mapping figé pour le **CSV** : `(X_h, Y_h, Z_h) = (Y_r, X_r, Z_r)` — permutation X ↔ Y, Z inchangé. Validé sur la scène de référence. Pour une autre convention, éditer la fonction `to_holophonix()` dans [`holophonix_export.py`](holophonix_export.py).
+Locked **CSV** mapping: `(X_h, Y_h, Z_h) = (Y_r, X_r, Z_r)` — swap X and Y, Z unchanged. Validated on the reference scene. To change the convention, edit `to_holophonix()` in [`holophonix_export.py`](holophonix_export.py).
 
-Les **GLB** sont exportés en coords Rhino brutes (aucune transformation pré-export). À vérifier côté Holophonix ; si la géométrie apparaît miroir par rapport aux positions CSV, il faudra ajouter une étape de transformation dans `export_glb` / `export_block_def_as_glb`.
+The **GLBs** are exported in raw Rhino coordinates (no pre-export transform). Verify on the Holophonix side; if the geometry appears mirrored relative to the CSV positions, a transformation step should be added in `export_glb` / `export_block_def_as_glb`.
 
 ## Limitations
 
-- Filtrage par nom de définition de bloc non natif côté Grasshopper (RH-78812). On filtre par calque, ce qui suffit ici.
-- Pas de gestion d'offset d'origine (feature volontairement abandonnée — repositionner l'origine de la scène Rhino si besoin).
-- L'export GLB s'appuie sur `Rhino.FileIO.FileGltf` (depuis Rhino 8.3). Sur des versions plus anciennes, le script échouera avec une `AttributeError`.
-- Les `InstanceReference` imbriquées dans une définition de bloc d'enceinte ne sont pas résolues (leur définition n'est pas répliquée dans le doc temporaire utilisé pour l'export). Typiquement sans impact pour les blocs d'enceintes "plats".
+- Filtering by block definition name is not native in Grasshopper (RH-78812). We filter by layer, which is enough here.
+- No origin-offset handling (feature deliberately abandoned — reposition the Rhino scene origin instead if needed).
+- GLB export relies on `Rhino.FileIO.FileGltf` (available since Rhino 8.3). On older versions the script fails with an `AttributeError`.
+- Nested `InstanceReference`s inside a speaker block definition are not resolved (their definition is not copied into the temporary document used for export). Usually a non-issue for "flat" speaker blocks.
 
 ## Inspiration
 
-Plugin Ruby SketchUp **`HOLOPHONIX_speaker_export`** (Holophonix S.A.S., 2024) — même logique AED et mêmes conventions de sérialisation (booléens string, séparateurs, absence de newline final), adapté à Rhino/Grasshopper.
+Official Holophonix Ruby SketchUp plugin **`HOLOPHONIX_speaker_export`** (Holophonix S.A.S., 2024) — same AED logic and same serialization conventions (string booleans, separators, no trailing newline), adapted to Rhino/Grasshopper.

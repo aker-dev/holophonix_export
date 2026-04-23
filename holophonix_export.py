@@ -1,33 +1,31 @@
 # Holophonix Overview export — GhPython (Rhino 8.3+, Python 3)
 #
-# Composant GhPython à configurer ainsi :
-#   Inputs :
-#     folder           (str,  Item Access) — dossier de sortie (CSV + .glb)
-#     run              (bool, Item Access) — bouton, déclenche l'écriture
-#     layer_root       (str,  Item Access) — préfixe de calque speakers, défaut "SPEAKERS"
-#     auto_orient      (bool, Item Access) — rempli "true"/"false" dans la colonne Auto Orientation
-#     export_venue     (bool, Item Access) — écrit venue.glb si True (défaut True)
-#     export_speakers  (bool, Item Access) — écrit <MODEL>.glb par modèle si True (défaut True)
-#   Outputs :
-#     lines        — liste des lignes CSV (header inclus), pour preview
-#     count        — nombre d'enceintes exportées
-#     log          — diagnostic (groupes + chemins écrits)
+# GhPython component setup:
+#   Inputs:
+#     folder           (str,  Item Access) — output folder (CSV + .glb)
+#     run              (bool, Item Access) — button, triggers writing
+#     layer_root       (str,  Item Access) — speakers layer prefix, defaults to "SPEAKERS"
+#     auto_orient      (bool, Item Access) — writes "true"/"false" in the Auto Orientation column
+#     export_venue     (bool, Item Access) — writes venue.glb when True (default True)
+#     export_speakers  (bool, Item Access) — writes one <MODEL>.glb per model when True (default True)
+#   Outputs:
+#     lines  — list of CSV lines (header included), for preview
+#     count  — number of exported speakers
+#     log    — diagnostics (groups + written paths)
 #
-# Comportement : scanne tous les Block Instances dont le calque complet
-# commence par "<layer_root>::", convertit le point d'insertion en mètres
-# quelle que soit l'unité du document Rhino, groupe par nom de calque
-# feuille, numérote NN zero-padded par groupe, convertit en polaire
-# (formules alignées sur le plugin Ruby officiel Holophonix), puis si
-# `run` est True écrit dans `folder` :
-#   - holophonix_overview.csv    (positions + couleurs)
-#   - venue.glb                  (géométrie du calque VENUE::*)
-#   - <MODEL>.glb                (définition du bloc, pivot = point d'insertion ;
-#                                 un fichier par sous-calque SPEAKERS::<MODEL>)
+# Behavior: scans every Block Instance whose full layer path starts with
+# "<layer_root>::", converts the insertion point to meters regardless of
+# the document unit, groups by leaf layer name, assigns a zero-padded NN
+# index per group, converts to polar (formulas aligned with the official
+# Holophonix Ruby plugin), then if `run` is True writes into `folder`:
+#   - holophonix_overview.csv    (positions + colors)
+#   - venue.glb                  (geometry of the VENUE::* layer)
+#   - <MODEL>.glb                (block definition, pivot = insertion point;
+#                                 one file per SPEAKERS::<MODEL> sub-layer)
 #
-# Mapping d'axes figé pour le CSV : (X_h, Y_h, Z_h) = (Y_r, X_r, Z_r).
-# Les GLB sont écrits via Rhino.FileIO.FileGltf.Write (API RhinoCommon,
-# pas de dialogue graphique) dans un doc headless temporaire. Requiert
-# Rhino >= 8.3.
+# Frozen CSV axis mapping: (X_h, Y_h, Z_h) = (Y_r, X_r, Z_r).
+# GLBs are written through Rhino.FileIO.FileGltf.Write (RhinoCommon API,
+# no GUI dialog) into a temporary headless document. Requires Rhino >= 8.3.
 
 import Rhino
 import math
@@ -43,12 +41,12 @@ DEFAULT_LOCK = "false"
 VENUE_ROOT = "VENUE"
 CSV_NAME = "holophonix_overview.csv"
 VENUE_GLB_NAME = "venue.glb"
-# Les speakers sont exportés en un .glb par modèle, nommé "<leaf>.glb"
-# (ex: MDC5.glb, HOPS8.glb, G18-SUB.glb).
+# Speakers are exported as one .glb per model, named "<leaf>.glb"
+# (e.g. MDC5.glb, HOPS8.glb, G18-SUB.glb).
 
 
 def to_holophonix(xyz):
-    # Mapping figé Rhino → Holophonix : permutation X ↔ Y, Z inchangé.
+    # Frozen Rhino -> Holophonix mapping: swap X and Y, Z unchanged.
     x, y, z = xyz
     return y, x, z
 
@@ -63,8 +61,8 @@ def polar(xh, yh, zh):
 
 
 def rgba_color(c):
-    # Format Holophonix: R,G,B,A en flottants 0-1, pleine précision.
-    # Entiers (0, 1) rendus sans décimales pour coller à l'export natif.
+    # Holophonix format: R,G,B,A as full-precision 0-1 floats.
+    # Integer values (0, 1) are rendered without decimals to match the native export.
     def fmt(v):
         iv = int(v)
         return str(iv) if v == iv else repr(v)
@@ -72,7 +70,7 @@ def rgba_color(c):
 
 
 def collect_objects_on_layer(doc, root):
-    """Object IDs dont le layer FullPath == root OU commence par root::."""
+    """Object IDs whose layer FullPath equals `root` OR starts with `root::`."""
     ids = []
     for obj in doc.Objects:
         layer = doc.Layers[obj.Attributes.LayerIndex]
@@ -83,9 +81,9 @@ def collect_objects_on_layer(doc, root):
 
 
 def collect_block_defs_by_leaf(doc, root):
-    """Dict {leaf: (InstanceDefinition, layer_color)} — une définition unique
-    par sous-calque de `root::`, avec la couleur du layer source pour appliquer
-    un matériau cohérent dans le .glb."""
+    """Dict {leaf: (InstanceDefinition, layer_color)} — one definition per
+    `root::` sub-layer, together with the source layer color so we can apply
+    a consistent material in the .glb."""
     root_prefix = root + "::"
     defs = {}
     for obj in doc.Objects:
@@ -102,18 +100,18 @@ def collect_block_defs_by_leaf(doc, root):
 
 
 def _gltf_options():
-    """Options par défaut pour l'export glTF. Cohérentes avec le CSV (Z up)."""
+    """Default glTF export options. Consistent with the CSV (Z up)."""
     opts = Rhino.FileIO.FileGltfWriteOptions()
-    opts.MapZToY = False                          # Z reste la hauteur (cf. CSV)
+    opts.MapZToY = False                          # keep Z as height (matches CSV)
     opts.ExportMaterials = True
-    opts.UseDisplayColorForUnsetMaterials = True  # fallback si jamais aucun mat
+    opts.UseDisplayColorForUnsetMaterials = True  # fallback when no material is set
     opts.CullBackfaces = True
-    opts.ExportLayers = False                     # GLB = asset neutre
+    opts.ExportLayers = False                     # GLB = neutral asset
     return opts
 
 
 def _resolve_display_color(source_doc, rh_obj):
-    """Couleur affichée de l'objet dans le doc source (depuis object ou layer)."""
+    """Display color of `rh_obj` in the source document (from object or layer)."""
     attrs = rh_obj.Attributes
     if attrs.ColorSource == Rhino.DocObjects.ObjectColorSource.ColorFromObject:
         return attrs.ObjectColor
@@ -121,38 +119,38 @@ def _resolve_display_color(source_doc, rh_obj):
 
 
 def _add_with_color(tmp_doc, rh_obj, color):
-    """Ajoute l'objet au doc temporaire avec sa display color explicite.
+    """Add `rh_obj` to the temporary document with an explicit display color.
 
-    L'exporter glTF utilise cette display color comme BaseColor PBR grâce à
-    l'option `UseDisplayColorForUnsetMaterials = True` dans `_gltf_options`.
-    On ne crée **aucun matériau** dans le tmp doc — contourne le bug Rhino
-    RH-81973 (les `PhysicallyBasedMaterial` créés dans un `RhinoDoc.CreateHeadless`
-    perdent leurs paramètres PBR à l'export glTF : BaseColor noire, Roughness 0, …)."""
+    The glTF exporter uses that display color as the PBR BaseColor thanks to the
+    `UseDisplayColorForUnsetMaterials = True` option in `_gltf_options`. We do
+    **not** create any material in the tmp doc — this sidesteps Rhino bug
+    RH-81973 (PhysicallyBasedMaterials created inside a RhinoDoc.CreateHeadless
+    lose their PBR parameters on glTF export: BaseColor goes black, Roughness 0, ...)."""
     attrs = rh_obj.Attributes.Duplicate()
     attrs.ObjectColor = color
     attrs.ColorSource = Rhino.DocObjects.ObjectColorSource.ColorFromObject
     attrs.MaterialSource = Rhino.DocObjects.ObjectMaterialSource.MaterialFromLayer
-    attrs.MaterialIndex = -1   # pas de matériau assigné → display color utilisée
-    attrs.LayerIndex = 0       # default layer du tmp doc
+    attrs.MaterialIndex = -1   # no material assigned -> display color is used
+    attrs.LayerIndex = 0       # default layer of the tmp doc
     tmp_doc.Objects.Add(rh_obj.Geometry, attrs)
 
 
 def _create_tmp_doc(source_doc):
-    """Crée un RhinoDoc headless aligné sur l'unité du doc source.
+    """Create a headless RhinoDoc whose unit system is aligned with the source doc.
 
-    `CreateHeadless(None)` part en mètres par défaut. Si le source est en mm
-    (cas courant pour un plan de salle), ajouter la géométrie telle quelle
-    aboutit à un GLB avec des coords 1000× trop petites — objets invisibles
-    dans Holophonix. On aligne donc les unités sans rescaler la géométrie."""
+    `CreateHeadless(None)` defaults to meters. If the source doc is in mm (a
+    common case for floor plans), adding the geometry as-is produces a GLB with
+    coordinates that are 1000x too small — objects become invisible in
+    Holophonix. We therefore match the unit system without rescaling geometry."""
     tmp = Rhino.RhinoDoc.CreateHeadless(None)
     tmp.AdjustModelUnitSystem(source_doc.ModelUnitSystem, False)
     return tmp
 
 
 def export_glb(source_doc, object_ids, output_path):
-    """Exporte les objets passés en .glb binary via l'API RhinoCommon (sans dialogue).
-    Pattern : doc headless (mêmes unités que source) → objets ajoutés avec leur
-    display color (sans matériau) → FileGltf.Write → dispose. Requiert Rhino >= 8.3."""
+    """Export the given objects as binary .glb through the RhinoCommon API (no dialog).
+    Pattern: headless doc (same units as source) -> objects added with their
+    display color (no material) -> FileGltf.Write -> dispose. Requires Rhino >= 8.3."""
     if not object_ids:
         return False
     tmp = _create_tmp_doc(source_doc)
@@ -167,14 +165,14 @@ def export_glb(source_doc, object_ids, output_path):
 
 
 def export_block_def_as_glb(source_doc, block_def, output_path, color):
-    """Exporte la géométrie de la définition du bloc en .glb binary.
-    Pivot = origine du bloc dans Rhino (point d'insertion). Tous les sous-objets
-    reçoivent la display color `color` (celle du layer SPEAKERS::<leaf> côté
-    source, pour rester cohérent avec le CSV).
+    """Export a block definition's geometry as binary .glb.
+    Pivot = block origin in Rhino (insertion point). Every sub-object receives
+    the display color `color` (the color of the source SPEAKERS::<leaf> layer,
+    to stay consistent with the CSV).
 
-    Limitation : les InstanceReferences imbriquées dans la définition ne sont
-    pas résolues (leur définition n'est pas répliquée dans le tmp doc).
-    Typiquement sans impact pour les blocs d'enceintes "plats"."""
+    Limitation: nested InstanceReferences inside the definition are not
+    resolved (their block definition is not copied into the tmp doc).
+    Usually a non-issue for "flat" speaker blocks."""
     tmp = _create_tmp_doc(source_doc)
     try:
         for rh_obj in block_def.GetObjects():
@@ -186,7 +184,7 @@ def export_block_def_as_glb(source_doc, block_def, output_path, color):
 
 def collect_speakers(doc, root):
     root_prefix = root + "::"
-    # Facteur de conversion unité-du-doc → mètres (Ruby = 0.0254 en dur car SketchUp=pouces).
+    # Conversion factor doc unit -> meters (Ruby hard-codes 0.0254 because SketchUp = inches).
     scale = Rhino.RhinoMath.UnitScale(doc.ModelUnitSystem, Rhino.UnitSystem.Meters)
     speakers = []
     for obj in doc.Objects:
@@ -219,7 +217,7 @@ def assign_indices(speakers):
         for i, s in enumerate(grp, start=1):
             s["index"] = i
             s["nn"] = str(i).zfill(pad)
-    # Index global 1..N dans l'ordre trié (utilisé pour l'OSC `/speaker/N`).
+    # Global 1..N index in sorted order (used for the `/speaker/N` OSC address).
     for i, s in enumerate(speakers, start=1):
         s["global_index"] = i
     return groups
@@ -239,7 +237,8 @@ def format_line(s, auto_orient_str):
 
 
 def _opt(name, default):
-    # Tolère l'input non déclaré sur le composant ET l'input déclaré mais non branché (None).
+    # Tolerates both an input that is not declared on the component AND a
+    # declared input that is not wired (value is None).
     v = globals().get(name, default)
     return default if v is None else v
 
@@ -284,8 +283,8 @@ if run_val and folder_val:
     else:
         log.append("SKIP venue.glb (export_venue=False)")
 
-    # SPEAKERS .glb : un fichier par modèle, contenant la définition du bloc
-    # (géométrie brute, pivot = point d'insertion du bloc, matériau = couleur du layer).
+    # SPEAKERS .glb: one file per model, containing the block definition
+    # (raw geometry, pivot = block insertion point, material = layer color).
     if export_speakers_val:
         defs_by_leaf = collect_block_defs_by_leaf(doc, root)
         if defs_by_leaf:

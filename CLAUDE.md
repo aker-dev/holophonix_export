@@ -1,39 +1,41 @@
-# holophonix_export — notes pour Claude
+# holophonix_export — notes for Claude
 
-Projet : exporter une scène Rhino 8 vers un package Holophonix — CSV Overview (positions + couleurs) + deux .glb (géométrie de la salle et blocs enceintes) à réimporter dans Holophonix.
+**Project language: English.** All code, comments, documentation, and commit messages are written in English. Earlier revisions were in French; everything has been translated as of the *"Translate everything to English"* commit.
 
-**Prérequis** : Rhino ≥ 8.3 (pour l'API `Rhino.FileIO.FileGltf`).
+Project: export a Rhino 8 scene into a Holophonix package — Overview CSV (positions + colors) + two kinds of .glb (venue geometry and speaker blocks) that can be re-imported into Holophonix.
 
-## Fichiers
+**Prerequisite**: Rhino >= 8.3 (for the `Rhino.FileIO.FileGltf` API).
 
-- `holophonix_export.py` — script à coller dans un composant GhPython3 de Grasshopper.
-- `New Preset - SPEAKER Overview.csv` — exemple d'export natif Holophonix, **référence de format**.
-- `docs/plan-initial.md` — plan historique, garder pour contexte.
+## Files
 
-## Format cible (verrouillé)
+- `holophonix_export.py` — script to paste into a Grasshopper GhPython3 component.
+- `New Preset - SPEAKER Overview.csv` — sample native Holophonix export, **format reference**.
+- `docs/plan-initial.md` — historical plan, kept for context.
 
-Header :
+## Target format (locked)
+
+Header:
 ```
 OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock
 ```
 
-Conventions :
-- **OSC** : `/speaker/N` — index global dans l'ordre du tri.
-- **Name** : `LAYER_NN` zero-padded par groupe de modèle (ex: `MDC5_01`, `HOPS8_02`).
-- **Color** : `R,G,B,A` flottants 0-1 pleine précision, séparés par `,` (attention : virgules DANS un champ `;`-séparé — c'est le format natif Holophonix).
-- **X/Y/Z** : mètres, 3 décimales (conversion auto depuis l'unité du doc via `Rhino.RhinoMath.UnitScale`).
-- **Azim/Elev/Dist** : degrés/mètres, 3 décimales. Formule Elev : `atan2(z, sqrt(x²+y²))` (plus robuste qu'`asin`, aligné plugin Ruby officiel).
-- **Booléens** : `true` / `false` en string (pas `0`/`1`).
-- **Pas de `\n` final** dans le fichier.
+Conventions:
+- **OSC**: `/speaker/N` — global index in sort order.
+- **Name**: `LAYER_NN` zero-padded per model group (e.g. `MDC5_01`, `HOPS8_02`).
+- **Color**: `R,G,B,A` as full-precision 0-1 floats, comma-separated (watch out: commas *inside* a `;`-separated field — that's the native Holophonix format).
+- **X/Y/Z**: meters, 3 decimals (automatic conversion from the doc unit via `Rhino.RhinoMath.UnitScale`).
+- **Azim/Elev/Dist**: degrees/meters, 3 decimals. Elev formula: `atan2(z, sqrt(x²+y²))` (more robust than `asin`, aligned with the official Ruby plugin).
+- **Booleans**: `true` / `false` as strings (not `0`/`1`).
+- **No trailing `\n`** in the file.
 
-## Scène Rhino attendue
+## Expected Rhino scene
 
-- **Enceintes** : Block Instances sur des sous-calques de `SPEAKERS::` (ex: `SPEAKERS::MDC5`, `SPEAKERS::HOPS8`). Couleur du calque = couleur de l'enceinte dans le CSV.
-- **Venue** : toute géométrie sur le calque `VENUE` (ou sous-calques `VENUE::*`). Exportée telle quelle dans `venue.glb`.
+- **Speakers**: Block Instances on sub-layers of `SPEAKERS::` (e.g. `SPEAKERS::MDC5`, `SPEAKERS::HOPS8`). Layer color = speaker color in the CSV.
+- **Venue**: any geometry on the `VENUE` layer (or `VENUE::*` sub-layers). Exported as-is to `venue.glb`.
 
-## Inputs du composant GhPython
+## GhPython component inputs
 
-| Nom               | Type | Défaut      |
+| Name              | Type | Default     |
 |-------------------|------|-------------|
 | `folder`          | str  | —           |
 | `run`             | bool | —           |
@@ -42,38 +44,38 @@ Conventions :
 | `export_venue`    | bool | `True`      |
 | `export_speakers` | bool | `True`      |
 
-Outputs : `lines`, `count`, `log`.
+Outputs: `lines`, `count`, `log`.
 
-Fichiers produits dans `folder` (créé s'il manque) :
-- `holophonix_overview.csv` — positions + couleurs au format Holophonix Overview.
-- `venue.glb` — géométrie du calque `VENUE` (constante `VENUE_ROOT` en tête de script).
-- `<MODEL>.glb` — **un fichier par sous-calque** `SPEAKERS::<MODEL>` (ex: `MDC5.glb`). Contient **la définition du bloc uniquement** (pas les instances placées dans la scène), avec le **point d'insertion du bloc comme pivot / origine**. Holophonix se charge d'instancier le modèle aux positions du CSV.
+Files produced in `folder` (created if missing):
+- `holophonix_overview.csv` — positions + colors in the Holophonix Overview format.
+- `venue.glb` — geometry of the `VENUE` layer (constant `VENUE_ROOT` at the top of the script).
+- `<MODEL>.glb` — **one file per** `SPEAKERS::<MODEL>` sub-layer (e.g. `MDC5.glb`). Contains **only the block definition** (not the instances placed in the scene), with the **block insertion point as pivot / origin**. Holophonix instantiates the model at the CSV positions.
 
-**Mapping d'axes figé (CSV uniquement)** : `(X_h, Y_h, Z_h) = (Y_r, X_r, Z_r)` — permutation X ↔ Y, Z inchangé. Les **GLB sont exportés en coords Rhino brutes** (à valider côté Holophonix ; si miroir, il faudra transformer la géométrie avant export).
+**Locked axis mapping (CSV only)**: `(X_h, Y_h, Z_h) = (Y_r, X_r, Z_r)` — swap X and Y, Z unchanged. **GLBs are exported in raw Rhino coordinates** (to be validated on the Holophonix side; if mirrored we'll need to transform the geometry before export).
 
-## Modifs typiques
+## Typical edits
 
-- Format couleur → `rgba_color()` seulement.
-- Convention axes CSV → éditer `to_holophonix()` directement (mapping figé, pas de runtime).
-- Unités → déjà géré auto.
-- Calque VENUE → constante `VENUE_ROOT` en tête de script.
-- Noms de fichiers de sortie → constantes `CSV_NAME`, `VENUE_GLB_NAME`. Les .glb par modèle sont nommés `<leaf>.glb` (si besoin de préfixer, modifier directement la boucle de main).
-- Options glTF → fonction `_gltf_options()` en un seul endroit (MapZToY, ExportMaterials, UseDisplayColorForUnsetMaterials, CullBackfaces, ExportLayers).
-- Export GLB → via l'API **`Rhino.FileIO.FileGltf.Write(path, tmp_doc, options)`** (zéro dialogue, zéro setup utilisateur). Pattern : `Rhino.RhinoDoc.CreateHeadless(None)` → `_add_with_material` (qui crée un matériau PBR par objet et l'assigne explicitement) → `FileGltf.Write` → `tmp.Dispose()`. Utilisé pour le venue (`export_glb`) et par modèle (`export_block_def_as_glb`, flatten via `InstanceDefinition.GetObjects()`).
-- **Unités du tmp doc** (fonction `_create_tmp_doc`) : `CreateHeadless(None)` crée un doc en **mètres par défaut**. Si le source est en mm et qu'on ajoute la géométrie brute dedans, le GLB produit a des coords 1000× trop petites — géométrie invisible dans Holophonix (1.6 cm au lieu de 16 m). On appelle donc `tmp.AdjustModelUnitSystem(source_doc.ModelUnitSystem, False)` juste après la création, pour aligner les unités sans rescaler la géométrie.
-- **Matériaux via display color** (fonction `_add_with_color`) : on ne crée **aucun** `Material` ni `RenderMaterial` dans le tmp doc. On pose `ObjectColor = <couleur>` + `ColorSource = ColorFromObject` sur les attributs, `MaterialIndex = -1`, puis `tmp_doc.Objects.Add(geom, attrs)`. L'option `UseDisplayColorForUnsetMaterials = True` de `_gltf_options()` fait que l'exporter glTF utilise cette display color comme BaseColor PBR (documenté par McNeel : *"Objects using the default material export with their display colors as material colors"*).
-- **Ne PAS créer de matériau PBR dans le tmp doc** : bug Rhino **RH-81973** — les `PhysicallyBasedMaterial` créés dans un `RhinoDoc.CreateHeadless(None)` perdent leurs paramètres (BaseColor, Roughness, Clearcoat…) à l'export glTF. Symptôme : GLB avec matériaux tout noirs. Ref : https://discourse.mcneel.com/t/physically-based-material-in-headless-doc/182696. Si un jour on veut ajouter métallique/roughness/texture, il faudra soit attendre la fix du bug, soit changer l'architecture (plus de tmp headless).
-- La couleur passée à `_add_with_color` vient de `_resolve_display_color` côté venue (par objet) ou de `collect_block_defs_by_leaf` côté speakers (couleur du layer `SPEAKERS::<leaf>`, retourné avec la `InstanceDefinition` dans le tuple `{leaf: (def, color)}`).
-- **Ne jamais revenir** à `RhinoApp.RunScript("_-Export …")` : sur macOS ça ouvre un dialogue bloquant qui ne peut être supprimé que par un setup manuel non-distribuable.
-- Speakers GLB : toujours exporter la **définition** (asset neutre), pas les instances placées dans la scène — Holophonix instancie côté CSV.
+- Color format -> `rgba_color()` only.
+- CSV axis convention -> edit `to_holophonix()` directly (mapping is frozen, not runtime).
+- Units -> already handled automatically.
+- VENUE layer -> `VENUE_ROOT` constant at the top of the script.
+- Output file names -> constants `CSV_NAME`, `VENUE_GLB_NAME`. The per-model .glb files are named `<leaf>.glb` (if a prefix is needed, tweak the loop in `main` directly).
+- glTF options -> `_gltf_options()` function, single source of truth (MapZToY, ExportMaterials, UseDisplayColorForUnsetMaterials, CullBackfaces, ExportLayers).
+- GLB export -> via the **`Rhino.FileIO.FileGltf.Write(path, tmp_doc, options)`** API (no dialog, no user setup). Pattern: `Rhino.RhinoDoc.CreateHeadless(None)` -> `_add_with_color` (copies the geometry with an explicit display color) -> `FileGltf.Write` -> `tmp.Dispose()`. Used for the venue (`export_glb`) and per model (`export_block_def_as_glb`, flatten via `InstanceDefinition.GetObjects()`).
+- **tmp doc units** (`_create_tmp_doc`): `CreateHeadless(None)` defaults to **meters**. If the source doc is in mm and we add the geometry as-is, the resulting GLB has coordinates 1000x too small — geometry invisible in Holophonix (1.6 cm instead of 16 m). We therefore call `tmp.AdjustModelUnitSystem(source_doc.ModelUnitSystem, False)` right after creation, to align units without rescaling the geometry.
+- **Materials via display color** (`_add_with_color`): we do **not** create any `Material` or `RenderMaterial` in the tmp doc. We set `ObjectColor = <color>` + `ColorSource = ColorFromObject` on the attributes, `MaterialIndex = -1`, then `tmp_doc.Objects.Add(geom, attrs)`. The `UseDisplayColorForUnsetMaterials = True` option in `_gltf_options()` makes the glTF exporter use that display color as the PBR BaseColor (documented by McNeel: *"Objects using the default material export with their display colors as material colors"*).
+- **Do NOT create a PBR material in the tmp doc**: Rhino bug **RH-81973** — `PhysicallyBasedMaterial` instances created inside a `RhinoDoc.CreateHeadless(None)` lose their parameters (BaseColor, Roughness, Clearcoat, ...) on glTF export. Symptom: GLBs with all-black materials. Ref: https://discourse.mcneel.com/t/physically-based-material-in-headless-doc/182696. If we ever need metallic/roughness/textures, we'll either need to wait for the fix or change the architecture (drop the tmp headless doc).
+- The color passed to `_add_with_color` comes from `_resolve_display_color` on the venue side (per object) or from `collect_block_defs_by_leaf` on the speakers side (layer color of `SPEAKERS::<leaf>`, returned with the `InstanceDefinition` as a `{leaf: (def, color)}` tuple).
+- **Never go back** to `RhinoApp.RunScript("_-Export …")`: on macOS it opens a blocking dialog that can only be dismissed by a manual, non-distributable setup.
+- Speaker GLBs: always export the **definition** (neutral asset), not the instances placed in the scene — Holophonix handles instantiation from the CSV.
 
-## Ne PAS faire
+## Do NOT
 
-- Remettre `#RRGGBB` sur la couleur (rejeté par Holophonix).
-- Ajouter un `\n` final.
-- Passer le Name en `Speaker N` sans confirmation (l'utilisateur tient à `LAYER_NN`).
-- Toucher aux offsets X/Y/Z (feature abandonnée, voir plan historique).
+- Switch the color back to `#RRGGBB` (rejected by Holophonix).
+- Add a trailing `\n`.
+- Rename `Name` to `Speaker N` without confirmation (the user specifically wants `LAYER_NN`).
+- Touch the X/Y/Z offsets (abandoned feature, see the historical plan).
 
-## Référence externe
+## External reference
 
-Plugin Ruby SketchUp officiel `HOLOPHONIX_speaker_export` (Holophonix S.A.S., 2024) — source des formules AED, conventions booléennes et séparateurs. Pas dans le repo mais lu par l'utilisateur pour valider l'alignement.
+Official Holophonix Ruby plugin `HOLOPHONIX_speaker_export` (Holophonix S.A.S., 2024) — source of the AED formulas, boolean conventions, and separators. Not in the repo but read by the user to validate alignment.
