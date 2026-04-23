@@ -13,6 +13,10 @@ Export a Rhino 8 scene to a **Holophonix package** (Overview CSV + `venue.glb` +
 
 ## Installation
 
+**Quick path** — open [`holophonix_export.ghx`](holophonix_export.ghx) in Grasshopper. The definition already embeds the GhPython3 component, its script, all the inputs, the Button for `run`, and the output Panels.
+
+**Manual path** (if you prefer to rebuild the component from scratch):
+
 1. Open Grasshopper inside Rhino 8.
 2. Drop a **GhPython3** component (*Script → Python 3*).
 3. Paste the contents of [`holophonix_export.py`](holophonix_export.py) into the component editor.
@@ -28,6 +32,8 @@ Export a Rhino 8 scene to a **Holophonix package** (Overview CSV + `venue.glb` +
    | `export_speakers` | bool | Toggle, defaults to `True` — writes one `<MODEL>.glb` per model  |
 
 5. Add the outputs `lines`, `count`, `log`.
+
+> The `.ghx` is the versioned Grasshopper definition (XML, diff-friendly). The binary `.gh` variant is intentionally kept out of the repo.
 
 ## Usage
 

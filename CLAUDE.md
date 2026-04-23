@@ -8,9 +8,8 @@ Project: export a Rhino 8 scene into a Holophonix package — Overview CSV (posi
 
 ## Files
 
-- `holophonix_export.py` — script to paste into a Grasshopper GhPython3 component.
-- `New Preset - SPEAKER Overview.csv` — sample native Holophonix export, **format reference**.
-- `docs/plan-initial.md` — historical plan, kept for context.
+- `holophonix_export.py` — script pasted inside the GhPython3 component (source of truth for the logic).
+- `holophonix_export.ghx` — Grasshopper definition in XML form (versionable, diff-friendly). Embeds the `holophonix_export.py` script and the component wiring (inputs, panels, button). Open in Rhino 8 / Grasshopper to use directly.
 
 ## Target format (locked)
 
@@ -74,7 +73,8 @@ Files produced in `folder` (created if missing):
 - Switch the color back to `#RRGGBB` (rejected by Holophonix).
 - Add a trailing `\n`.
 - Rename `Name` to `Speaker N` without confirmation (the user specifically wants `LAYER_NN`).
-- Touch the X/Y/Z offsets (abandoned feature, see the historical plan).
+- Re-introduce X/Y/Z offsets (abandoned feature — reposition the Rhino scene origin if needed).
+- Commit the binary `.gh` alongside the `.ghx`. The repo versions `.ghx` only (text XML, diffable).
 
 ## External reference
 

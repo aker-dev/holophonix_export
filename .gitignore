@@ -3,3 +3,6 @@
 *.swo
 __pycache__/
 *.pyc
+
+# Grasshopper: keep only the XML (.ghx), ignore the binary form
+*.gh
