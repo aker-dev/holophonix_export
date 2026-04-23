@@ -33,12 +33,14 @@ Conventions :
 
 ## Inputs du composant GhPython
 
-| Nom          | Type | Défaut      |
-|--------------|------|-------------|
-| `folder`     | str  | —           |
-| `run`        | bool | —           |
-| `layer_root` | str  | `SPEAKERS`  |
-| `auto_orient`| bool | `False`     |
+| Nom               | Type | Défaut      |
+|-------------------|------|-------------|
+| `folder`          | str  | —           |
+| `run`             | bool | —           |
+| `layer_root`      | str  | `SPEAKERS`  |
+| `auto_orient`     | bool | `False`     |
+| `export_venue`    | bool | `True`      |
+| `export_speakers` | bool | `True`      |
 
 Outputs : `lines`, `count`, `log`.
 

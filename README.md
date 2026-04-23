@@ -16,12 +16,14 @@ Export d'une scène Rhino 8 vers un **package Holophonix** (CSV Overview + `venu
 3. Coller le contenu de [`holophonix_export.py`](holophonix_export.py) dans l'éditeur du composant.
 4. Ajouter les inputs (clic droit sur le composant, `+`) :
 
-   | Nom           | Type | Détail                                                           |
-   |---------------|------|------------------------------------------------------------------|
-   | `folder`      | str  | Panel avec le **dossier** de sortie (créé s'il manque)           |
-   | `run`         | bool | **Button** (one-shot, pour ne pas écraser à chaque tick)         |
-   | `layer_root`  | str  | Panel, défaut `SPEAKERS`                                         |
-   | `auto_orient` | bool | Toggle, défaut `False`                                           |
+   | Nom               | Type | Détail                                                           |
+   |-------------------|------|------------------------------------------------------------------|
+   | `folder`          | str  | Panel avec le **dossier** de sortie (créé s'il manque)           |
+   | `run`             | bool | **Button** (one-shot, pour ne pas écraser à chaque tick)         |
+   | `layer_root`      | str  | Panel, défaut `SPEAKERS`                                         |
+   | `auto_orient`     | bool | Toggle, défaut `False`                                           |
+   | `export_venue`    | bool | Toggle, défaut `True` — écrit `venue.glb` si activé              |
+   | `export_speakers` | bool | Toggle, défaut `True` — écrit un `<MODEL>.glb` par modèle        |
 
 5. Ajouter les outputs `lines`, `count`, `log`.
 

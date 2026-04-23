@@ -2,10 +2,12 @@
 #
 # Composant GhPython à configurer ainsi :
 #   Inputs :
-#     folder       (str,  Item Access) — dossier de sortie (CSV + .glb)
-#     run          (bool, Item Access) — bouton, déclenche l'écriture
-#     layer_root   (str,  Item Access) — préfixe de calque speakers, défaut "SPEAKERS"
-#     auto_orient  (bool, Item Access) — rempli "true"/"false" dans la colonne Auto Orientation
+#     folder           (str,  Item Access) — dossier de sortie (CSV + .glb)
+#     run              (bool, Item Access) — bouton, déclenche l'écriture
+#     layer_root       (str,  Item Access) — préfixe de calque speakers, défaut "SPEAKERS"
+#     auto_orient      (bool, Item Access) — rempli "true"/"false" dans la colonne Auto Orientation
+#     export_venue     (bool, Item Access) — écrit venue.glb si True (défaut True)
+#     export_speakers  (bool, Item Access) — écrit <MODEL>.glb par modèle si True (défaut True)
 #   Outputs :
 #     lines        — liste des lignes CSV (header inclus), pour preview
 #     count        — nombre d'enceintes exportées
@@ -247,6 +249,8 @@ root = _opt("layer_root", "SPEAKERS") or "SPEAKERS"
 auto_orient_str = "true" if _opt("auto_orient", False) else "false"
 folder_val = _opt("folder", None)
 run_val = _opt("run", False)
+export_venue_val = bool(_opt("export_venue", True))
+export_speakers_val = bool(_opt("export_speakers", True))
 
 speakers = collect_speakers(doc, root)
 groups = assign_indices(speakers)
@@ -267,26 +271,32 @@ if run_val and folder_val:
     log.append("WROTE: {}".format(csv_path))
 
     # VENUE .glb
-    venue_ids = collect_objects_on_layer(doc, VENUE_ROOT)
-    if venue_ids:
-        venue_path = os.path.join(folder, VENUE_GLB_NAME)
-        if export_glb(doc, venue_ids, venue_path):
-            log.append("WROTE: {}".format(venue_path))
+    if export_venue_val:
+        venue_ids = collect_objects_on_layer(doc, VENUE_ROOT)
+        if venue_ids:
+            venue_path = os.path.join(folder, VENUE_GLB_NAME)
+            if export_glb(doc, venue_ids, venue_path):
+                log.append("WROTE: {}".format(venue_path))
+            else:
+                log.append("FAILED venue.glb (FileGltf.Write returned False)")
         else:
-            log.append("FAILED venue.glb (FileGltf.Write returned False)")
+            log.append("SKIP venue.glb: no geometry on '{}'".format(VENUE_ROOT))
     else:
-        log.append("SKIP venue.glb: no geometry on '{}'".format(VENUE_ROOT))
+        log.append("SKIP venue.glb (export_venue=False)")
 
     # SPEAKERS .glb : un fichier par modèle, contenant la définition du bloc
     # (géométrie brute, pivot = point d'insertion du bloc, matériau = couleur du layer).
-    defs_by_leaf = collect_block_defs_by_leaf(doc, root)
-    if defs_by_leaf:
-        for leaf in sorted(defs_by_leaf):
-            spk_path = os.path.join(folder, "{}.glb".format(leaf))
-            block_def, color = defs_by_leaf[leaf]
-            if export_block_def_as_glb(doc, block_def, spk_path, color):
-                log.append("WROTE: {}".format(spk_path))
-            else:
-                log.append("FAILED {}.glb (FileGltf.Write returned False)".format(leaf))
+    if export_speakers_val:
+        defs_by_leaf = collect_block_defs_by_leaf(doc, root)
+        if defs_by_leaf:
+            for leaf in sorted(defs_by_leaf):
+                spk_path = os.path.join(folder, "{}.glb".format(leaf))
+                block_def, color = defs_by_leaf[leaf]
+                if export_block_def_as_glb(doc, block_def, spk_path, color):
+                    log.append("WROTE: {}".format(spk_path))
+                else:
+                    log.append("FAILED {}.glb (FileGltf.Write returned False)".format(leaf))
+        else:
+            log.append("SKIP speakers: no blocks on '{}'".format(root))
     else:
-        log.append("SKIP speakers: no blocks on '{}'".format(root))
+        log.append("SKIP speakers (export_speakers=False)")
