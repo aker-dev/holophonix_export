@@ -81,9 +81,9 @@ def collect_objects_on_layer(doc, root):
 
 
 def collect_block_defs_by_leaf(doc, root):
-    """Dict {leaf: InstanceDefinition} — une définition unique par sous-calque de `root::`.
-    Toutes les instances d'un même modèle doivent pointer vers la même définition ;
-    on prend celle de la première instance rencontrée."""
+    """Dict {leaf: (InstanceDefinition, layer_color)} — une définition unique
+    par sous-calque de `root::`, avec la couleur du layer source pour appliquer
+    un matériau cohérent dans le .glb."""
     root_prefix = root + "::"
     defs = {}
     for obj in doc.Objects:
@@ -95,26 +95,50 @@ def collect_block_defs_by_leaf(doc, root):
             continue
         leaf = fp.split("::")[-1]
         if leaf not in defs:
-            defs[leaf] = obj.InstanceDefinition
+            defs[leaf] = (obj.InstanceDefinition, layer.Color)
     return defs
 
 
 def _gltf_options():
-    """Options par défaut pour l'export glTF. Cohérentes avec le CSV (Z up),
-    compatibles avec le rendu Holophonix (matériaux + couleur de calque)."""
+    """Options par défaut pour l'export glTF. Cohérentes avec le CSV (Z up)."""
     opts = Rhino.FileIO.FileGltfWriteOptions()
     opts.MapZToY = False                          # Z reste la hauteur (cf. CSV)
     opts.ExportMaterials = True
-    opts.UseDisplayColorForUnsetMaterials = True  # couleur du calque = couleur du GLB
+    opts.UseDisplayColorForUnsetMaterials = True  # fallback si jamais aucun mat
     opts.CullBackfaces = True
     opts.ExportLayers = False                     # GLB = asset neutre
     return opts
 
 
+def _resolve_display_color(source_doc, rh_obj):
+    """Couleur affichée de l'objet dans le doc source (depuis object ou layer)."""
+    attrs = rh_obj.Attributes
+    if attrs.ColorSource == Rhino.DocObjects.ObjectColorSource.ColorFromObject:
+        return attrs.ObjectColor
+    return source_doc.Layers[attrs.LayerIndex].Color
+
+
+def _add_with_color(tmp_doc, rh_obj, color):
+    """Ajoute l'objet au doc temporaire avec sa display color explicite.
+
+    L'exporter glTF utilise cette display color comme BaseColor PBR grâce à
+    l'option `UseDisplayColorForUnsetMaterials = True` dans `_gltf_options`.
+    On ne crée **aucun matériau** dans le tmp doc — contourne le bug Rhino
+    RH-81973 (les `PhysicallyBasedMaterial` créés dans un `RhinoDoc.CreateHeadless`
+    perdent leurs paramètres PBR à l'export glTF : BaseColor noire, Roughness 0, …)."""
+    attrs = rh_obj.Attributes.Duplicate()
+    attrs.ObjectColor = color
+    attrs.ColorSource = Rhino.DocObjects.ObjectColorSource.ColorFromObject
+    attrs.MaterialSource = Rhino.DocObjects.ObjectMaterialSource.MaterialFromLayer
+    attrs.MaterialIndex = -1   # pas de matériau assigné → display color utilisée
+    attrs.LayerIndex = 0       # default layer du tmp doc
+    tmp_doc.Objects.Add(rh_obj.Geometry, attrs)
+
+
 def export_glb(source_doc, object_ids, output_path):
     """Exporte les objets passés en .glb binary via l'API RhinoCommon (sans dialogue).
-    Pattern : doc headless temporaire → duplication des géométries → FileGltf.Write → dispose.
-    Requiert Rhino >= 8.3."""
+    Pattern : doc headless → objets ajoutés avec leur display color (sans matériau)
+    → FileGltf.Write → dispose. Requiert Rhino >= 8.3."""
     if not object_ids:
         return False
     tmp = Rhino.RhinoDoc.CreateHeadless(None)
@@ -122,16 +146,17 @@ def export_glb(source_doc, object_ids, output_path):
         for oid in object_ids:
             obj = source_doc.Objects.FindId(oid)
             if obj is not None:
-                tmp.Objects.Add(obj.Geometry, obj.Attributes)
+                _add_with_color(tmp, obj, _resolve_display_color(source_doc, obj))
         return Rhino.FileIO.FileGltf.Write(output_path, tmp, _gltf_options())
     finally:
         tmp.Dispose()
 
 
-def export_block_def_as_glb(source_doc, block_def, output_path):
+def export_block_def_as_glb(source_doc, block_def, output_path, color):
     """Exporte la géométrie de la définition du bloc en .glb binary.
-    Pivot = origine du bloc dans Rhino (point d'insertion). On flatten la
-    définition via GetObjects() dans un doc headless, puis FileGltf.Write.
+    Pivot = origine du bloc dans Rhino (point d'insertion). Tous les sous-objets
+    reçoivent la display color `color` (celle du layer SPEAKERS::<leaf> côté
+    source, pour rester cohérent avec le CSV).
 
     Limitation : les InstanceReferences imbriquées dans la définition ne sont
     pas résolues (leur définition n'est pas répliquée dans le tmp doc).
@@ -139,7 +164,7 @@ def export_block_def_as_glb(source_doc, block_def, output_path):
     tmp = Rhino.RhinoDoc.CreateHeadless(None)
     try:
         for rh_obj in block_def.GetObjects():
-            tmp.Objects.Add(rh_obj.Geometry, rh_obj.Attributes)
+            _add_with_color(tmp, rh_obj, color)
         return Rhino.FileIO.FileGltf.Write(output_path, tmp, _gltf_options())
     finally:
         tmp.Dispose()
@@ -241,12 +266,13 @@ if run_val and folder_val:
         log.append("SKIP venue.glb: no geometry on '{}'".format(VENUE_ROOT))
 
     # SPEAKERS .glb : un fichier par modèle, contenant la définition du bloc
-    # (géométrie brute, pivot = point d'insertion du bloc).
+    # (géométrie brute, pivot = point d'insertion du bloc, matériau = couleur du layer).
     defs_by_leaf = collect_block_defs_by_leaf(doc, root)
     if defs_by_leaf:
         for leaf in sorted(defs_by_leaf):
             spk_path = os.path.join(folder, "{}.glb".format(leaf))
-            if export_block_def_as_glb(doc, defs_by_leaf[leaf], spk_path):
+            block_def, color = defs_by_leaf[leaf]
+            if export_block_def_as_glb(doc, block_def, spk_path, color):
                 log.append("WROTE: {}".format(spk_path))
             else:
                 log.append("FAILED {}.glb (FileGltf.Write returned False)".format(leaf))
