@@ -135,13 +135,25 @@ def _add_with_color(tmp_doc, rh_obj, color):
     tmp_doc.Objects.Add(rh_obj.Geometry, attrs)
 
 
+def _create_tmp_doc(source_doc):
+    """Crée un RhinoDoc headless aligné sur l'unité du doc source.
+
+    `CreateHeadless(None)` part en mètres par défaut. Si le source est en mm
+    (cas courant pour un plan de salle), ajouter la géométrie telle quelle
+    aboutit à un GLB avec des coords 1000× trop petites — objets invisibles
+    dans Holophonix. On aligne donc les unités sans rescaler la géométrie."""
+    tmp = Rhino.RhinoDoc.CreateHeadless(None)
+    tmp.AdjustModelUnitSystem(source_doc.ModelUnitSystem, False)
+    return tmp
+
+
 def export_glb(source_doc, object_ids, output_path):
     """Exporte les objets passés en .glb binary via l'API RhinoCommon (sans dialogue).
-    Pattern : doc headless → objets ajoutés avec leur display color (sans matériau)
-    → FileGltf.Write → dispose. Requiert Rhino >= 8.3."""
+    Pattern : doc headless (mêmes unités que source) → objets ajoutés avec leur
+    display color (sans matériau) → FileGltf.Write → dispose. Requiert Rhino >= 8.3."""
     if not object_ids:
         return False
-    tmp = Rhino.RhinoDoc.CreateHeadless(None)
+    tmp = _create_tmp_doc(source_doc)
     try:
         for oid in object_ids:
             obj = source_doc.Objects.FindId(oid)
@@ -161,7 +173,7 @@ def export_block_def_as_glb(source_doc, block_def, output_path, color):
     Limitation : les InstanceReferences imbriquées dans la définition ne sont
     pas résolues (leur définition n'est pas répliquée dans le tmp doc).
     Typiquement sans impact pour les blocs d'enceintes "plats"."""
-    tmp = Rhino.RhinoDoc.CreateHeadless(None)
+    tmp = _create_tmp_doc(source_doc)
     try:
         for rh_obj in block_def.GetObjects():
             _add_with_color(tmp, rh_obj, color)
