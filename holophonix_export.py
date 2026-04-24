@@ -34,8 +34,6 @@ from collections import defaultdict
 
 HEADER = "OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock"
 
-DEFAULT_PAN = "0"
-DEFAULT_TILT = "0"
 DEFAULT_LOCK = "false"
 
 VENUE_ROOT = "VENUE"
@@ -43,6 +41,11 @@ CSV_NAME = "holophonix_overview.csv"
 VENUE_GLB_NAME = "venue.glb"
 # Speakers are exported as one .glb per model, named "<leaf>.glb"
 # (e.g. MDC5.glb, HOPS8.glb, G18-SUB.glb).
+
+# Local forward of a speaker block (front face direction in the block
+# definition's coordinate system). Applied via InstanceXform to get the
+# world-space forward used for Pan / Tilt extraction.
+FORWARD_LOCAL = (0.0, 1.0, 0.0)
 
 
 def to_holophonix(xyz):
@@ -58,6 +61,20 @@ def polar(xh, yh, zh):
     az = math.degrees(math.atan2(yh, xh))
     el = math.degrees(math.atan2(zh, math.sqrt(xh * xh + yh * yh)))
     return az, el, d
+
+
+def pan_tilt(forward_holo):
+    """Pan and tilt (degrees) of a forward vector expressed in Holophonix coords.
+
+    Pan  = -atan2(y, x)              — azimuth in the horizontal plane
+                                       (negated to match Holophonix's sign convention)
+    Tilt = atan2(z, sqrt(x² + y²))   — elevation above horizontal
+    """
+    x, y, z = forward_holo
+    horiz = math.sqrt(x * x + y * y)
+    if horiz == 0.0:
+        return 0.0, (90.0 if z > 0 else -90.0 if z < 0 else 0.0)
+    return -math.degrees(math.atan2(y, x)), math.degrees(math.atan2(z, horiz))
 
 
 def rgba_color(c):
@@ -197,11 +214,16 @@ def collect_speakers(doc, root):
         block_def = obj.InstanceDefinition
         pt = Rhino.Geometry.Point3d.Origin
         pt.Transform(obj.InstanceXform)
+        # Forward direction of the block in world coordinates (rotation only;
+        # Vector3d.Transform ignores the translation part of InstanceXform).
+        fwd = Rhino.Geometry.Vector3d(*FORWARD_LOCAL)
+        fwd.Transform(obj.InstanceXform)
         leaf = full_path.split("::")[-1]
         speakers.append({
             "leaf": leaf,
             "model": block_def.Name,
             "xyz": (pt.X * scale, pt.Y * scale, pt.Z * scale),
+            "forward": (fwd.X, fwd.Y, fwd.Z),
             "color": rgba_color(layer.Color),
         })
     return speakers
@@ -226,13 +248,17 @@ def assign_indices(speakers):
 def format_line(s, auto_orient_str):
     xh, yh, zh = to_holophonix(s["xyz"])
     az, el, d = polar(xh, yh, zh)
+    pan, tilt = pan_tilt(to_holophonix(s["forward"]))
     osc = "/speaker/{}".format(s["global_index"])
     name = "{}_{}".format(s["leaf"], s["nn"])
     return ";".join([
         osc, name, s["color"],
         "{:.3f}".format(xh), "{:.3f}".format(yh), "{:.3f}".format(zh),
         "{:.3f}".format(az), "{:.3f}".format(el), "{:.3f}".format(d),
-        auto_orient_str, DEFAULT_PAN, DEFAULT_TILT, DEFAULT_LOCK,
+        auto_orient_str,
+        "{:.3f}".format(pan),
+        "{:.3f}".format(tilt),
+        DEFAULT_LOCK,
     ])
 
 

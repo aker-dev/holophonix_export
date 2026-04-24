@@ -67,6 +67,7 @@ Files produced in `folder` (created if missing):
 - The color passed to `_add_with_color` comes from `_resolve_display_color` on the venue side (per object) or from `collect_block_defs_by_leaf` on the speakers side (layer color of `SPEAKERS::<leaf>`, returned with the `InstanceDefinition` as a `{leaf: (def, color)}` tuple).
 - **Never go back** to `RhinoApp.RunScript("_-Export …")`: on macOS it opens a blocking dialog that can only be dismissed by a manual, non-distributable setup.
 - Speaker GLBs: always export the **definition** (neutral asset), not the instances placed in the scene — Holophonix handles instantiation from the CSV.
+- **Pan / Tilt from block orientation**: the local forward of a speaker block is `FORWARD_LOCAL = (0, 1, 0)` (local +Y). We transform it by `InstanceXform` (rotation-only for vectors) and apply `to_holophonix` before computing `pan = -atan2(y, x)` (sign flipped to match Holophonix) and `tilt = atan2(z, horizontal)` in degrees (function `pan_tilt`). If the front face of a block points along another local axis, change `FORWARD_LOCAL`.
 
 ## Do NOT
 
