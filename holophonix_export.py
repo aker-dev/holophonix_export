@@ -274,8 +274,8 @@ root = _opt("layer_root", "SPEAKERS") or "SPEAKERS"
 auto_orient_str = "true" if _opt("auto_orient", False) else "false"
 folder_val = _opt("folder", None)
 run_val = _opt("run", False)
-export_venue_val = bool(_opt("export_venue", True))
-export_speakers_val = bool(_opt("export_speakers", True))
+export_venue_val = bool(_opt("export_venue", False))
+export_speakers_val = bool(_opt("export_speakers", False))
 
 speakers = collect_speakers(doc, root)
 groups = assign_indices(speakers)
