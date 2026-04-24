@@ -6,8 +6,8 @@
 #     run              (bool, Item Access) — button, writes CSV + GLBs
 #     layer_root       (str,  Item Access) — speakers layer prefix, defaults to "SPEAKERS"
 #     auto_orient      (bool, Item Access) — writes "true"/"false" in the Auto Orientation column
-#     export_venue     (bool, Item Access) — writes venue.glb when True (default True)
-#     export_speakers  (bool, Item Access) — writes one <MODEL>.glb per model when True (default True)
+#     export_venue     (bool, Item Access) — writes venue.glb when True (default False)
+#     export_speakers  (bool, Item Access) — writes one <MODEL>.glb per model when True (default False)
 #     sync             (bool, Item Access) — button, pushes speakers to Holophonix via OSC
 #     osc_host         (str,  Item Access) — Holophonix host for OSC sync, defaults to "127.0.0.1"
 #     osc_port         (int,  Item Access) — Holophonix OSC port, defaults to 4003
