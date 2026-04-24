@@ -11,6 +11,8 @@ Export a Rhino 8 scene to a **Holophonix package** (Overview CSV + `venue.glb` +
   - **Speakers** — Block Instances on sub-layers of `SPEAKERS::*` (one sub-layer per model: `SPEAKERS::MDC5`, `SPEAKERS::HOPS8`, ...). The layer color is used as the speaker color in the CSV.
   - **Venue** — any geometry on the `VENUE` layer (or `VENUE::*`). Exported as-is to .glb.
 
+A sample scene is bundled at [`starting_scene.3dm`](starting_scene.3dm) — open it in Rhino 8 to try the export without having to build a layer hierarchy from scratch.
+
 ## Installation
 
 **Quick path** — open [`holophonix_export.ghx`](holophonix_export.ghx) in Grasshopper. The definition already embeds the GhPython3 component, its script, all the inputs, the Button for `run`, and the output Panels.
