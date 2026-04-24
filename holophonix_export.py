@@ -47,10 +47,12 @@ VENUE_GLB_NAME = "venue.glb"
 # Speakers are exported as one .glb per model, named "<leaf>.glb"
 # (e.g. MDC5.glb, HOPS8.glb, G18-SUB.glb).
 
-# Local forward of a speaker block (front face direction in the block
-# definition's coordinate system). Applied via InstanceXform to get the
-# world-space forward used for Pan / Tilt extraction.
-FORWARD_LOCAL = (0.0, 1.0, 0.0)
+# Local forward of a speaker block: front face direction in the block's own
+# coordinate system. In this project's Rhino scene the speakers point along
+# local −Y (i.e. the block was modelled with its front face facing -Y).
+# The vector is transformed by `InstanceXform` to get the world-space
+# forward used for Pan / Tilt extraction.
+FORWARD_LOCAL = (0.0, -1.0, 0.0)
 
 
 def to_holophonix(xyz):
@@ -227,8 +229,13 @@ def collect_speakers(doc, root):
         pt.Transform(obj.InstanceXform)
         # Forward direction of the block in world coordinates (rotation only;
         # Vector3d.Transform ignores the translation part of InstanceXform).
+        # The stored forward is NEGATED so that `pan_tilt` can use a standard
+        # `atan2` convention without an extra sign flip. Equivalent to using
+        # local +Y as the reference axis, but `FORWARD_LOCAL` above stays
+        # aligned with the block's physical front face (local −Y).
         fwd = Rhino.Geometry.Vector3d(*FORWARD_LOCAL)
         fwd.Transform(obj.InstanceXform)
+        fwd.Reverse()
         leaf = full_path.split("::")[-1]
         speakers.append({
             "leaf": leaf,
