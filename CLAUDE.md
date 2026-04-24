@@ -22,8 +22,8 @@ Conventions:
 - **OSC**: `/speaker/N` — global index in sort order.
 - **Name**: `LAYER_NN` zero-padded per model group (e.g. `MDC5_01`, `HOPS8_02`). If the Rhino block instance has a `Name` attribute set (`ObjectAttributes.Name`), it is inserted between the layer and the index — e.g. `G18-SUB_CENTER_01`.
 - **Color**: `R,G,B,A` as full-precision 0-1 floats, comma-separated (watch out: commas *inside* a `;`-separated field — that's the native Holophonix format).
-- **X/Y/Z**: meters, 3 decimals (automatic conversion from the doc unit via `Rhino.RhinoMath.UnitScale`).
-- **Azim/Elev/Dist**: degrees/meters, 3 decimals. Elev formula: `atan2(z, sqrt(x²+y²))` (more robust than `asin`, aligned with the official Ruby plugin).
+- **X/Y/Z**: meters, full precision (automatic conversion from the doc unit via `Rhino.RhinoMath.UnitScale`). Integers render without decimals (`0`, `1.006`, `-0.7044160264027586`) via `_fmt_num`, matching the native Holophonix CSV style.
+- **Azim/Elev/Dist**: degrees/meters, full precision (same `_fmt_num` rule). Elev formula: `atan2(z, sqrt(x²+y²))` (more robust than `asin`, aligned with the official Ruby plugin).
 - **Booleans**: `true` / `false` as strings (not `0`/`1`).
 - **No trailing `\n`** in the file.
 

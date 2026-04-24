@@ -73,7 +73,7 @@ OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock
 - **Color**: `R,G,B,A` as 0–1 floats.
 - **X/Y/Z**: meters — automatic conversion from the Rhino document unit.
 - **Pan / Tilt**: derived from each speaker block's orientation in the scene. Forward axis convention: local +Y inside the block definition (see `FORWARD_LOCAL` in the script). Pan = azimuth of the forward vector in the horizontal plane, Tilt = elevation above horizontal, both in degrees.
-- All numeric values at **3 decimals**.
+- Numeric fields written at **full precision** (`repr()`-style), kept consistent with what `sync` pushes over OSC so the two paths produce identical positions in Holophonix.
 
 ## Axis conventions
 

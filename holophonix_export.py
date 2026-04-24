@@ -82,13 +82,19 @@ def pan_tilt(forward_holo):
     return -math.degrees(math.atan2(y, x)), math.degrees(math.atan2(z, horiz))
 
 
+def _fmt_num(v):
+    """CSV-friendly number format: integer if `v` is exactly an integer,
+    otherwise full-precision `repr()`. Matches Holophonix's own CSV style
+    (`1`, `150`, `0.7044160264027586`, ...) and keeps the CSV and the OSC
+    payload aligned — both round-trip without rounding drift."""
+    iv = int(v)
+    return str(iv) if v == iv else repr(v)
+
+
 def rgba_color(c):
     # Holophonix format: R,G,B,A as full-precision 0-1 floats.
     # Integer values (0, 1) are rendered without decimals to match the native export.
-    def fmt(v):
-        iv = int(v)
-        return str(iv) if v == iv else repr(v)
-    return ",".join(fmt(x / 255.0) for x in (c.R, c.G, c.B, c.A))
+    return ",".join(_fmt_num(x / 255.0) for x in (c.R, c.G, c.B, c.A))
 
 
 def collect_objects_on_layer(doc, root):
@@ -267,13 +273,16 @@ def format_line(s, auto_orient_str):
     pan, tilt = pan_tilt(to_holophonix(s["forward"]))
     osc = "/speaker/{}".format(s["global_index"])
     name = _build_name(s)
+    # Numeric fields written at full precision via `_fmt_num`, matching what
+    # `send_osc_sync` pushes over OSC. Rounding here to 3 decimals previously
+    # caused a drift of a few cm between the CSV-imported positions and the
+    # OSC-synced positions.
     return ";".join([
         osc, name, s["color"],
-        "{:.3f}".format(xh), "{:.3f}".format(yh), "{:.3f}".format(zh),
-        "{:.3f}".format(az), "{:.3f}".format(el), "{:.3f}".format(d),
+        _fmt_num(xh), _fmt_num(yh), _fmt_num(zh),
+        _fmt_num(az), _fmt_num(el), _fmt_num(d),
         auto_orient_str,
-        "{:.3f}".format(pan),
-        "{:.3f}".format(tilt),
+        _fmt_num(pan), _fmt_num(tilt),
         DEFAULT_LOCK,
     ])
 
