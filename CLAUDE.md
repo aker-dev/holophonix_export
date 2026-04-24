@@ -34,16 +34,23 @@ Conventions:
 
 ## GhPython component inputs
 
-| Name              | Type | Default     |
-|-------------------|------|-------------|
-| `folder`          | str  | —           |
-| `run`             | bool | —           |
-| `layer_root`      | str  | `SPEAKERS`  |
-| `auto_orient`     | bool | `False`     |
-| `export_venue`    | bool | `True`      |
-| `export_speakers` | bool | `True`      |
+| Name              | Type | Default      |
+|-------------------|------|--------------|
+| `folder`          | str  | —            |
+| `run`             | bool | —            |
+| `layer_root`      | str  | `SPEAKERS`   |
+| `auto_orient`     | bool | `False`      |
+| `export_venue`    | bool | `True`       |
+| `export_speakers` | bool | `True`       |
+| `sync`            | bool | —            |
+| `osc_host`        | str  | `127.0.0.1`  |
+| `osc_port`        | int  | `4003`       |
 
 Outputs: `lines`, `count`, `log`.
+
+`run` writes the file package (CSV + GLBs). `sync` pushes the current speaker
+state to Holophonix over UDP/OSC (host/port configurable). Both are
+independent buttons — either or both can fire per component evaluation.
 
 Files produced in `folder` (created if missing):
 - `holophonix_overview.csv` — positions + colors in the Holophonix Overview format.
@@ -68,6 +75,7 @@ Files produced in `folder` (created if missing):
 - **Never go back** to `RhinoApp.RunScript("_-Export …")`: on macOS it opens a blocking dialog that can only be dismissed by a manual, non-distributable setup.
 - Speaker GLBs: always export the **definition** (neutral asset), not the instances placed in the scene — Holophonix handles instantiation from the CSV.
 - **Pan / Tilt from block orientation**: the local forward of a speaker block is `FORWARD_LOCAL = (0, 1, 0)` (local +Y). We transform it by `InstanceXform` (rotation-only for vectors) and apply `to_holophonix` before computing `pan = -atan2(y, x)` (sign flipped to match Holophonix) and `tilt = atan2(z, horizontal)` in degrees (function `pan_tilt`). If the front face of a block points along another local axis, change `FORWARD_LOCAL`.
+- **OSC sync**: `send_osc_sync(host, port, speakers, auto_orient_bool)` pushes each speaker's `name`, `color`, `azim`, `elev`, `dist`, `view3D/pan`, `view3D/tilt`, `view3D/autoOrientation` over UDP. Minimal in-file OSC encoder (`_osc_string`, `_osc_message`) — no external dependency. Holophonix speakers must already exist (from a prior CSV import) because OSC only updates slots, it does not create them. The `/speaker/<index>/…` prefix uses the global sort index — must be the same index Holophonix was seeded with, or messages will target wrong speakers.
 
 ## Do NOT
 

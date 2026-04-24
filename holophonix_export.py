@@ -3,15 +3,18 @@
 # GhPython component setup:
 #   Inputs:
 #     folder           (str,  Item Access) — output folder (CSV + .glb)
-#     run              (bool, Item Access) — button, triggers writing
+#     run              (bool, Item Access) — button, writes CSV + GLBs
 #     layer_root       (str,  Item Access) — speakers layer prefix, defaults to "SPEAKERS"
 #     auto_orient      (bool, Item Access) — writes "true"/"false" in the Auto Orientation column
 #     export_venue     (bool, Item Access) — writes venue.glb when True (default True)
 #     export_speakers  (bool, Item Access) — writes one <MODEL>.glb per model when True (default True)
+#     sync             (bool, Item Access) — button, pushes speakers to Holophonix via OSC
+#     osc_host         (str,  Item Access) — Holophonix host for OSC sync, defaults to "127.0.0.1"
+#     osc_port         (int,  Item Access) — Holophonix OSC port, defaults to 4003
 #   Outputs:
 #     lines  — list of CSV lines (header included), for preview
 #     count  — number of exported speakers
-#     log    — diagnostics (groups + written paths)
+#     log    — diagnostics (groups + written paths + OSC status)
 #
 # Behavior: scans every Block Instance whose full layer path starts with
 # "<layer_root>::", converts the insertion point to meters regardless of
@@ -30,6 +33,8 @@
 import Rhino
 import math
 import os
+import socket
+import struct
 from collections import defaultdict
 
 HEADER = "OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock"
@@ -246,18 +251,22 @@ def assign_indices(speakers):
     return groups
 
 
+def _build_name(s):
+    """Speaker Name string: '<LEAF>_<OBJNAME>_<NN>' if the Rhino object has a
+    Name attribute, otherwise '<LEAF>_<NN>'."""
+    parts = [s["leaf"]]
+    if s.get("obj_name"):
+        parts.append(s["obj_name"])
+    parts.append(s["nn"])
+    return "_".join(parts)
+
+
 def format_line(s, auto_orient_str):
     xh, yh, zh = to_holophonix(s["xyz"])
     az, el, d = polar(xh, yh, zh)
     pan, tilt = pan_tilt(to_holophonix(s["forward"]))
     osc = "/speaker/{}".format(s["global_index"])
-    # Name format: "<LEAF>_<OBJNAME>_<NN>" if the Rhino object has a Name set,
-    # otherwise "<LEAF>_<NN>".
-    name_parts = [s["leaf"]]
-    if s.get("obj_name"):
-        name_parts.append(s["obj_name"])
-    name_parts.append(s["nn"])
-    name = "_".join(name_parts)
+    name = _build_name(s)
     return ";".join([
         osc, name, s["color"],
         "{:.3f}".format(xh), "{:.3f}".format(yh), "{:.3f}".format(zh),
@@ -269,6 +278,84 @@ def format_line(s, auto_orient_str):
     ])
 
 
+# ---------------------------------------------------------------------------
+# OSC sync (Holophonix) — minimal UDP encoder, no external dependency.
+# Spec: http://opensoundcontrol.org/spec-1_0 — address + ",<typetag>" + args,
+# each padded to 4-byte boundaries. We only encode the types we need: f, i, s,
+# T (true), F (false).
+# ---------------------------------------------------------------------------
+
+
+def _osc_string(s):
+    """Encode a string in OSC format: null-terminated, padded to 4 bytes."""
+    data = s.encode("utf-8") + b"\x00"
+    pad = (4 - len(data) % 4) % 4
+    return data + b"\x00" * pad
+
+
+def _osc_message(address, typetag, *args):
+    """Build a single OSC message.
+    typetag: string of type codes without the leading comma (e.g. "f", "sffff").
+    args: values in order; 'T' and 'F' consume no arg (the value is the type)."""
+    msg = _osc_string(address) + _osc_string("," + typetag)
+    ai = 0
+    for t in typetag:
+        if t == "f":
+            msg += struct.pack(">f", float(args[ai])); ai += 1
+        elif t == "i":
+            msg += struct.pack(">i", int(args[ai])); ai += 1
+        elif t == "s":
+            msg += _osc_string(str(args[ai])); ai += 1
+        elif t in ("T", "F"):
+            pass   # no payload for bool types
+    return msg
+
+
+def send_osc_sync(host, port, speakers, auto_orient_bool):
+    """Push every speaker's parameters to Holophonix over UDP/OSC.
+
+    Speakers must already exist in Holophonix (via a prior CSV import) — OSC
+    updates existing slots indexed by `/speaker/<global_index>/…`, it does not
+    create new ones. Returns the number of OSC messages sent.
+
+    `view3D/autoOrientation` is sent FIRST so Holophonix knows the mode before
+    it receives numeric angles. If sent last while True, Holophonix may
+    auto-recompute pan/tilt and overwrite our values.
+
+    Angles and distance are sent as float32 (type `f`). The Holophonix OSC
+    spec labels them "entier" (integer), but the server accepts floats and a
+    CSV round-trip preserves the decimal values — integer rounding drifts
+    positions by up to 40 cm per speaker."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sent = 0
+    try:
+        for s in speakers:
+            idx = s["global_index"]
+            xh, yh, zh = to_holophonix(s["xyz"])
+            az, el, d = polar(xh, yh, zh)
+            pan, tilt = pan_tilt(to_holophonix(s["forward"]))
+            name = _build_name(s)
+            rgba = [float(v) for v in s["color"].split(",")]
+            base = "/speaker/{}".format(idx)
+            messages = [
+                _osc_message(base + "/view3D/autoOrientation",
+                             "T" if auto_orient_bool else "F"),
+                _osc_message(base + "/name", "s", name),
+                _osc_message(base + "/color", "ffff", *rgba),
+                _osc_message(base + "/azim", "f", az),
+                _osc_message(base + "/elev", "f", el),
+                _osc_message(base + "/dist", "f", d),
+                _osc_message(base + "/view3D/pan", "f", pan),
+                _osc_message(base + "/view3D/tilt", "f", tilt),
+            ]
+            for m in messages:
+                sock.sendto(m, (host, port))
+                sent += 1
+    finally:
+        sock.close()
+    return sent
+
+
 def _opt(name, default):
     # Tolerates both an input that is not declared on the component AND a
     # declared input that is not wired (value is None).
@@ -278,11 +365,15 @@ def _opt(name, default):
 
 doc = Rhino.RhinoDoc.ActiveDoc
 root = _opt("layer_root", "SPEAKERS") or "SPEAKERS"
-auto_orient_str = "true" if _opt("auto_orient", False) else "false"
+auto_orient_bool = bool(_opt("auto_orient", False))
+auto_orient_str = "true" if auto_orient_bool else "false"
 folder_val = _opt("folder", None)
 run_val = _opt("run", False)
 export_venue_val = bool(_opt("export_venue", False))
 export_speakers_val = bool(_opt("export_speakers", False))
+sync_val = bool(_opt("sync", False))
+osc_host_val = _opt("osc_host", "127.0.0.1") or "127.0.0.1"
+osc_port_val = int(_opt("osc_port", 4003))
 
 speakers = collect_speakers(doc, root)
 groups = assign_indices(speakers)
@@ -332,3 +423,15 @@ if run_val and folder_val:
             log.append("SKIP speakers: no blocks on '{}'".format(root))
     else:
         log.append("SKIP speakers (export_speakers=False)")
+
+# OSC sync — independent of run/folder, triggered by its own button so you
+# can push live updates without re-exporting the CSV/GLB package.
+if sync_val:
+    if not speakers:
+        log.append("OSC SKIP: no speakers to sync")
+    else:
+        try:
+            n = send_osc_sync(osc_host_val, osc_port_val, speakers, auto_orient_bool)
+            log.append("OSC: sent {} messages to {}:{}".format(n, osc_host_val, osc_port_val))
+        except Exception as e:
+            log.append("OSC FAILED ({}:{}): {}".format(osc_host_val, osc_port_val, e))

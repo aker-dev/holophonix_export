@@ -25,11 +25,14 @@ Export a Rhino 8 scene to a **Holophonix package** (Overview CSV + `venue.glb` +
    | Name              | Type | Details                                                          |
    |-------------------|------|------------------------------------------------------------------|
    | `folder`          | str  | Panel with the output **folder** path (created if missing)       |
-   | `run`             | bool | **Button** (one-shot, so nothing is overwritten on every tick)   |
+   | `run`             | bool | **Button** — writes CSV + GLB package                            |
    | `layer_root`      | str  | Panel, defaults to `SPEAKERS`                                    |
    | `auto_orient`     | bool | Toggle, defaults to `False`                                      |
    | `export_venue`    | bool | Toggle, defaults to `True` — writes `venue.glb` when enabled     |
    | `export_speakers` | bool | Toggle, defaults to `True` — writes one `<MODEL>.glb` per model  |
+   | `sync`            | bool | **Button** — pushes speakers to Holophonix via OSC               |
+   | `osc_host`        | str  | Panel, defaults to `127.0.0.1`                                   |
+   | `osc_port`        | int  | Panel, defaults to `4003`                                        |
 
 5. Add the outputs `lines`, `count`, `log`.
 
@@ -44,6 +47,18 @@ Export a Rhino 8 scene to a **Holophonix package** (Overview CSV + `venue.glb` +
    - `venue.glb` — venue geometry
    - `<MODEL>.glb` for each `SPEAKERS::<MODEL>` sub-layer (e.g. `MDC5.glb`, `HOPS8.glb`, `G18-SUB.glb`, ...) — **one asset per model**, containing only the block definition with its insertion point as pivot. Not the instances placed in the scene.
 4. In Holophonix: import the CSV through the **Overview** window, load `venue.glb` as the stage decor, and each `<MODEL>.glb` as an asset instantiated at the positions of the matching speakers in the CSV.
+
+## OSC live sync
+
+Once the speakers exist in Holophonix (from the CSV import above), you can push live updates without going through a file round-trip:
+
+1. Set `osc_host` and `osc_port` to match your Holophonix instance (defaults `127.0.0.1:4003`).
+2. Click **`sync`** → the component sends one UDP/OSC message per parameter per speaker: `name`, `color` (RGBA), `azim` / `elev` / `dist`, `view3D/pan`, `view3D/tilt`, `view3D/autoOrientation`.
+3. The speakers keep their index from the CSV import, so positions update in place.
+
+The OSC encoder is a ~30-line helper in [`holophonix_export.py`](holophonix_export.py) (no external dependency). It speaks OSC 1.0 over UDP — address + typetag + 4-byte-aligned args.
+
+> OSC cannot create new speakers — only update existing ones. If you add/remove speakers in Rhino, re-export the CSV and re-import it in Holophonix so slot indices stay in sync.
 
 ## Output format
 
