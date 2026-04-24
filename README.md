@@ -54,7 +54,7 @@ OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock
 ```
 
 - **OSC**: global index (`/speaker/1`, `/speaker/2`, ...) in sort order.
-- **Name**: `<model>_NN` zero-padded per group.
+- **Name**: `<model>_NN` zero-padded per group, or `<model>_<objname>_NN` when the Rhino block instance has a Name attribute set (e.g. `G18-SUB_CENTER_01`).
 - **Color**: `R,G,B,A` as 0–1 floats.
 - **X/Y/Z**: meters — automatic conversion from the Rhino document unit.
 - **Pan / Tilt**: derived from each speaker block's orientation in the scene. Forward axis convention: local +Y inside the block definition (see `FORWARD_LOCAL` in the script). Pan = azimuth of the forward vector in the horizontal plane, Tilt = elevation above horizontal, both in degrees.

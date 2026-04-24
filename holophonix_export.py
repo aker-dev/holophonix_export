@@ -222,6 +222,7 @@ def collect_speakers(doc, root):
         speakers.append({
             "leaf": leaf,
             "model": block_def.Name,
+            "obj_name": (obj.Attributes.Name or "").strip(),
             "xyz": (pt.X * scale, pt.Y * scale, pt.Z * scale),
             "forward": (fwd.X, fwd.Y, fwd.Z),
             "color": rgba_color(layer.Color),
@@ -250,7 +251,13 @@ def format_line(s, auto_orient_str):
     az, el, d = polar(xh, yh, zh)
     pan, tilt = pan_tilt(to_holophonix(s["forward"]))
     osc = "/speaker/{}".format(s["global_index"])
-    name = "{}_{}".format(s["leaf"], s["nn"])
+    # Name format: "<LEAF>_<OBJNAME>_<NN>" if the Rhino object has a Name set,
+    # otherwise "<LEAF>_<NN>".
+    name_parts = [s["leaf"]]
+    if s.get("obj_name"):
+        name_parts.append(s["obj_name"])
+    name_parts.append(s["nn"])
+    name = "_".join(name_parts)
     return ";".join([
         osc, name, s["color"],
         "{:.3f}".format(xh), "{:.3f}".format(yh), "{:.3f}".format(zh),
