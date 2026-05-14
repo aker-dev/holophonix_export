@@ -35,7 +35,7 @@ import math
 import os
 import socket
 import struct
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 HEADER = "OSC Address;Name;Color;X;Y;Z;Azim;Elev;Dist;Auto Orientation;Pan;Tilt;Lock"
 
@@ -53,6 +53,12 @@ VENUE_GLB_NAME = "venue.glb"
 # The vector is transformed by `InstanceXform` to get the world-space
 # forward used for Pan / Tilt extraction.
 FORWARD_LOCAL = (0.0, -1.0, 0.0)
+
+# Optional per-instance Attribute User Text key. When a block instance has
+# this entry with an integer value, the value overrides the geometric sort
+# and dictates the speaker's position in the export (`/speaker/N` and
+# `LAYER_NN` numbering). See `assign_indices` for the fallback rules.
+ID_USER_TEXT_KEY = "ID"
 
 
 def to_holophonix(xyz):
@@ -241,6 +247,7 @@ def collect_speakers(doc, root):
             "leaf": leaf,
             "model": block_def.Name,
             "obj_name": (obj.Attributes.Name or "").strip(),
+            "id_raw": (obj.Attributes.GetUserString(ID_USER_TEXT_KEY) or "").strip(),
             "xyz": (pt.X * scale, pt.Y * scale, pt.Z * scale),
             "forward": (fwd.X, fwd.Y, fwd.Z),
             "color": rgba_color(layer.Color),
@@ -249,7 +256,49 @@ def collect_speakers(doc, root):
 
 
 def assign_indices(speakers):
-    speakers.sort(key=lambda s: (s["leaf"], s["xyz"][1], s["xyz"][0], s["xyz"][2]))
+    # Parse each `id_raw` into a tentative integer (or None). The `ID`
+    # Attribute User Text is optional: when present and valid it overrides
+    # the geometric sort, otherwise the speaker falls back to (leaf, Y, X, Z).
+    warnings = []
+    for s in speakers:
+        raw = s.get("id_raw", "")
+        if not raw:
+            s["id"] = None
+            continue
+        try:
+            s["id"] = int(raw)
+        except ValueError:
+            s["id"] = None
+            warnings.append(
+                "WARN: non-integer ID {!r} on {} — geometric fallback applied"
+                .format(raw, s["leaf"])
+            )
+
+    # Duplicates collapse both sides back to the geometric bucket, so the
+    # CSV never silently picks a winner. One warning per duplicated value.
+    counts = Counter(s["id"] for s in speakers if s["id"] is not None)
+    dupes = {v for v, n in counts.items() if n > 1}
+    for v in sorted(dupes):
+        warnings.append(
+            "WARN: duplicate ID {} on multiple speakers — geometric fallback applied"
+            .format(v)
+        )
+    if dupes:
+        for s in speakers:
+            if s["id"] in dupes:
+                s["id"] = None
+
+    # Combined sort: bucket 0 (IDed) before bucket 1 (geometric). Within
+    # bucket 0 sort by ID ascending; within bucket 1 keep the legacy
+    # (leaf, Y, X, Z) ordering so the no-ID case is byte-identical to
+    # the previous behaviour.
+    def _sort_key(s):
+        if s["id"] is not None:
+            return (0, s["id"], "", 0.0, 0.0, 0.0)
+        x, y, z = s["xyz"]
+        return (1, s["leaf"], y, x, z)
+    speakers.sort(key=_sort_key)
+
     groups = defaultdict(list)
     for s in speakers:
         groups[s["leaf"]].append(s)
@@ -261,7 +310,7 @@ def assign_indices(speakers):
     # Global 1..N index in sorted order (used for the `/speaker/N` OSC address).
     for i, s in enumerate(speakers, start=1):
         s["global_index"] = i
-    return groups
+    return groups, warnings
 
 
 def _build_name(s):
@@ -392,12 +441,12 @@ osc_host_val = _opt("osc_host", "127.0.0.1") or "127.0.0.1"
 osc_port_val = int(_opt("osc_port", 4003))
 
 speakers = collect_speakers(doc, root)
-groups = assign_indices(speakers)
+groups, id_warnings = assign_indices(speakers)
 
 rows = [format_line(s, auto_orient_str) for s in speakers]
 lines = [HEADER] + rows
 count = len(rows)
-log = ["{}: {}".format(leaf, len(grp)) for leaf, grp in groups.items()]
+log = id_warnings + ["{}: {}".format(leaf, len(grp)) for leaf, grp in groups.items()]
 
 if run_val and folder_val:
     folder = os.path.expanduser(folder_val)
